@@ -24,7 +24,7 @@ export default function StaffAttendance() {
   const fetchRecords = async () => {
     try {
       const { data, error } = await supabase
-        .from("attendance_records"
+        .from("attendance_records")
         .select("id, work_date, clock_in, clock_out")
         .eq("user_id", id)
         .gte("work_date", `${selectedMonth}-01`)
