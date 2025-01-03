@@ -1,0 +1,80 @@
+/* Tailwind CSS の基盤をインポート */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* カスタムスタイル */
+
+/* Google Fontsをインポート */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+/* ベーススタイルリセット - 全体的な余白とフォント設定 */
+html,
+body {
+  padding: 0; /* ページ全体のパディングをリセット */
+  margin: 0; /* ページ全体のマージンをリセット */
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol"; /* フォントをGoogle FontsのInterとシステムフォントに設定 */
+  background-color: #f7f7f7; /* 背景色をライトグレーに設定 */
+  color: #333; /* デフォルトのテキストカラーをダークグレーに設定 */
+}
+
+/* aタグのデフォルトスタイルをリセット */
+a {
+  color: inherit; /* 親要素のテキストカラーを引き継ぐ */
+  text-decoration: none; /* アンダーラインを削除 */
+}
+
+/* すべての要素にボックスサイズをborder-boxに設定 */
+* {
+  box-sizing: border-box; /* ボックスの幅計算にパディングとボーダーを含める */
+}
+
+/* アニメーション */
+
+/* フェードアウトアニメーション（ポップアップ用） */
+@keyframes fadeOut {
+  from {
+    opacity: 1; /* 開始時は完全に不透明 */
+  }
+  to {
+    opacity: 0; /* 終了時は完全に透明 */
+  }
+}
+
+/* フェードアウト用クラス */
+.fade-out {
+  animation: fadeOut 2s forwards; /* 2秒間でフェードアウト */
+}
+
+/* ポップアップ */
+
+/* 成功時のポップアップスタイル */
+.popup-success {
+  position: fixed; /* ページ内で固定配置 */
+  top: 10px; /* 上端から10px下に配置 */
+  left: 50%; /* 左端から50%（中央） */
+  transform: translateX(-50%); /* 中央揃え調整 */
+  background-color: #28a745; /* 背景色をグリーンに設定 */
+  color: #fff; /* テキストカラーをホワイトに設定 */
+  padding: 10px 20px; /* 内部のスペースを設定 */
+  border-radius: 5px; /* 角を丸める */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); /* ボックスシャドウで浮き上がらせる */
+  z-index: 1000; /* 他の要素の上に表示 */
+}
+
+/* エラーポップアップの背景色変更 */
+.popup-error {
+  background-color: #dc3545; /* 背景色をレッドに設定 */
+}
+
+/* レスポンシブ対応 */
+
+/* スマートフォン向けのスタイル調整 */
+@media (max-width: 768px) {
+  .popup-success,
+  .popup-error {
+    font-size: 14px; /* ポップアップの文字サイズを縮小 */
+  }
+}
