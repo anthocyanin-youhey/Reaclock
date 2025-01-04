@@ -16,6 +16,24 @@ export default function ClockPage({
   const [status, setStatus] = useState("");
   const [isClockInDisabled, setIsClockInDisabled] = useState(false);
   const [isClockOutDisabled, setIsClockOutDisabled] = useState(false);
+  const [currentTime, setCurrentTime] = useState<string>(""); // 現在の時間を保持
+  const [clockInTime, setClockInTime] = useState<string>("未記録"); // 出勤時間
+  const [clockOutTime, setClockOutTime] = useState<string>("未記録"); // 退勤時間
+
+  useEffect(() => {
+    // 現在の時間を更新するタイマーをセット
+    const timer = setInterval(() => {
+      const now = new Date();
+      const formattedTime = now.toLocaleTimeString("ja-JP", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      setCurrentTime(formattedTime);
+    }, 1000);
+
+    return () => clearInterval(timer); // クリーンアップ
+  }, []);
 
   useEffect(() => {
     const checkAttendanceStatus = async () => {
@@ -34,8 +52,14 @@ export default function ClockPage({
           setStatus("打刻情報の確認に失敗しました。");
         } else if (data) {
           // 出勤・退勤ボタンの状態を判定
-          if (data.clock_in) setIsClockInDisabled(true);
-          if (data.clock_out) setIsClockOutDisabled(true);
+          if (data.clock_in) {
+            setIsClockInDisabled(true);
+            setClockInTime(data.clock_in.slice(0, 5)); // 出勤時間を設定（HH:MM形式）
+          }
+          if (data.clock_out) {
+            setIsClockOutDisabled(true);
+            setClockOutTime(data.clock_out.slice(0, 5)); // 退勤時間を設定（HH:MM形式）
+          }
         }
       } catch (err) {
         console.error("エラー:", err);
@@ -55,13 +79,21 @@ export default function ClockPage({
       });
 
       if (response.ok) {
-        setStatus(
-          type === "clock_in"
-            ? "出勤が記録されました。"
-            : "退勤が記録されました。"
-        );
-        if (type === "clock_in") setIsClockInDisabled(true);
-        if (type === "clock_out") setIsClockOutDisabled(true);
+        const now = new Date();
+        const formattedTime = now.toLocaleTimeString("ja-JP", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+
+        if (type === "clock_in") {
+          setStatus("出勤が記録されました。");
+          setIsClockInDisabled(true);
+          setClockInTime(formattedTime);
+        } else {
+          setStatus("退勤が記録されました。");
+          setIsClockOutDisabled(true);
+          setClockOutTime(formattedTime);
+        }
       } else {
         setStatus("記録に失敗しました。");
       }
@@ -74,8 +106,22 @@ export default function ClockPage({
   return (
     <UserLayout userName={user.name}>
       <div className="text-center">
-        <h1 className="text-2xl font-bold mb-4">出退勤打刻</h1>
+        <h1 className="text-3xl font-bold mb-4">出退勤打刻</h1>
+        {/* 現在の時間を大きく表示 */}
+        <p className="text-4xl font-bold mb-6">{currentTime}</p>
+
+        {/* 出勤時間・退勤時間の表示 */}
+        <div className="mb-6">
+          <p className="text-xl">
+            出勤時間：{clockInTime ? clockInTime : "未記録"}
+          </p>
+          <p className="text-xl">
+            退勤時間：{clockOutTime ? clockOutTime : "未記録"}
+          </p>
+        </div>
+
         <p className="text-red-500 mb-4">{status}</p>
+
         <div className="flex justify-center gap-4">
           <button
             onClick={() => handleClock("clock_in")}

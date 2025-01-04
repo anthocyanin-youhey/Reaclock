@@ -1,12 +1,11 @@
-// src/pages/admin/login.tsx
 import { useState } from "react";
 import { useRouter } from "next/router";
 
 export default function AdminLogin() {
-  const [employeeNumber, setEmployeeNumber] = useState("");
-  const [password, setPassword] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-  const router = useRouter();
+  const [employeeNumber, setEmployeeNumber] = useState(""); // 社員番号
+  const [password, setPassword] = useState(""); // パスワード
+  const [errorMessage, setErrorMessage] = useState(""); // エラーメッセージ
+  const router = useRouter(); // ルーター
 
   // ログイン処理
   const handleLogin = async () => {
@@ -25,12 +24,18 @@ export default function AdminLogin() {
       const data = await response.json();
 
       if (response.ok) {
-        console.log("ログイン成功！データ:", data); // 成功時のログ
+        // ログイン成功
         setErrorMessage("");
         router.push("/admin/dashboard"); // ダッシュボードに遷移
       } else {
-        setErrorMessage(data.error || "ログインに失敗しました。");
-        console.log("ログイン失敗。エラー内容:", data.error);
+        // ログイン失敗時のエラーハンドリング
+        if (data.error === "Unauthorized") {
+          setErrorMessage("この画面には管理者権限が必要です。");
+        } else if (data.error === "Invalid credentials") {
+          setErrorMessage("社員番号またはパスワードが間違っています。");
+        } else {
+          setErrorMessage(data.error || "ログインに失敗しました。");
+        }
       }
     } catch (error) {
       console.error("ログイン中のエラー:", error);
@@ -69,9 +74,15 @@ export default function AdminLogin() {
         {errorMessage && <p className="text-red-500">{errorMessage}</p>}
         <button
           onClick={handleLogin}
-          className="w-full py-2 mt-4 text-white bg-blue-500 hover:bg-blue-600 rounded"
+          className="w-full py-2 text-white bg-blue-500 hover:bg-blue-600 rounded mb-4"
         >
           ログイン
+        </button>
+        <button
+          onClick={() => router.push("/")}
+          className="w-full py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded"
+        >
+          戻る
         </button>
       </div>
     </div>

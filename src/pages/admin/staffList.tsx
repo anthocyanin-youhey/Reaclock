@@ -7,7 +7,7 @@ import { requireAdminAuth } from "../../utils/authHelpers"; // サーバーサ�
 
 export const getServerSideProps = requireAdminAuth;
 
-export default function StaffList({ adminName }: { adminName: string }) {
+export default function StaffList({ admin }: { admin: { name: string } }) {
   const router = useRouter();
   const [staffList, setStaffList] = useState<any[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
@@ -56,7 +56,7 @@ export default function StaffList({ adminName }: { adminName: string }) {
   }, []);
 
   return (
-    <AdminLayout adminName={adminName}>
+    <AdminLayout adminName={admin.name}>
       <div className="container mx-auto py-6">
         <h1 className="text-2xl font-bold mb-4">スタッフ一覧</h1>
         {errorMessage && <p className="text-red-500">{errorMessage}</p>}

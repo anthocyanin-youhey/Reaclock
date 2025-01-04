@@ -1,18 +1,21 @@
 // src/pages/user/login.tsx
-
-import { useState } from "react"; // 状態管理
-import { useRouter } from "next/router"; // ルーティング
+import { useState } from "react";
+import { useRouter } from "next/router";
 
 export default function UserLogin() {
   const [employeeNumber, setEmployeeNumber] = useState(""); // 入力された社員番号
   const [password, setPassword] = useState(""); // 入力されたパスワード
   const [errorMessage, setErrorMessage] = useState(""); // エラーメッセージ
-  const router = useRouter(); // ルーター
+  const router = useRouter();
 
   // ログインボタン押下時の処理
   const handleLogin = async () => {
-    if (!employeeNumber || !password) {
-      setErrorMessage("社員番号とパスワードを入力してください。");
+    if (!employeeNumber) {
+      setErrorMessage("社員番号を入力してください。");
+      return;
+    }
+    if (!password) {
+      setErrorMessage("パスワードを入力してください。");
       return;
     }
 
@@ -28,14 +31,21 @@ export default function UserLogin() {
 
       if (response.ok) {
         setErrorMessage(""); // エラーをリセット
-        alert("ログイン成功！"); // 成功メッセージ
+        alert("ログイン成功！");
         router.push("/user/clock"); // 打刻ページに遷移
       } else {
-        setErrorMessage(data.error || "ログインに失敗しました。");
+        // エラー内容に応じたメッセージを表示
+        if (data.error === "Invalid employee number") {
+          setErrorMessage("社員番号が間違っています。");
+        } else if (data.error === "Invalid password") {
+          setErrorMessage("パスワードが間違っています。");
+        } else {
+          setErrorMessage("ログインに失敗しました。もう一度お試しください。");
+        }
       }
     } catch (error) {
       console.error("ログインエラー:", error);
-      setErrorMessage("ネットワークエラーが発生しました。");
+      setErrorMessage("ネットワークエラーが発生しました。再試行してください。");
     }
   };
 

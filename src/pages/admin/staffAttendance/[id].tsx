@@ -1,13 +1,19 @@
-// src/pages/admin/staffAttendance/[id].tsx
-
+// /src/pages/admin/staffAttendance/[id].tsx
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import { supabase } from "../../../utils/supabaseCliants";
 import AdminLayout from "../../../components/AdminLayout";
+import { requireAdminAuth } from "../../../utils/authHelpers";
 
-export default function StaffAttendance() {
+export const getServerSideProps = requireAdminAuth;
+
+export default function StaffAttendance({
+  admin,
+}: {
+  admin: { name: string; id: number };
+}) {
   const router = useRouter();
-  const { id } = router.query; // スタッフIDを取得
+  const { id } = router.query; // スタッフID
   const [records, setRecords] = useState<any[]>([]);
   const [error, setError] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
@@ -23,19 +29,19 @@ export default function StaffAttendance() {
   // 打刻履歴を取得
   const fetchRecords = async () => {
     try {
+      const firstDay = `${selectedMonth}-01`;
+      const lastDay = `${selectedMonth}-${new Date(
+        parseInt(selectedMonth.split("-")[0]),
+        parseInt(selectedMonth.split("-")[1]),
+        0
+      ).getDate()}`;
+
       const { data, error } = await supabase
         .from("attendance_records")
         .select("id, work_date, clock_in, clock_out")
         .eq("user_id", id)
-        .gte("work_date", `${selectedMonth}-01`)
-        .lte(
-          "work_date",
-          `${selectedMonth}-${new Date(
-            Number(selectedMonth.split("-")[0]),
-            Number(selectedMonth.split("-")[1]),
-            0
-          ).getDate()}`
-        )
+        .gte("work_date", firstDay)
+        .lte("work_date", lastDay)
         .order("work_date", { ascending: false });
 
       if (error) {
@@ -57,7 +63,7 @@ export default function StaffAttendance() {
             clock_out_minute: record.clock_out
               ? record.clock_out.split(":")[1]
               : "--",
-            hasChanges: false, // 初期状態では変更なし
+            hasChanges: false,
           }))
         );
       }
@@ -103,19 +109,6 @@ export default function StaffAttendance() {
         return;
       }
 
-      const { data: existingLogs, error: logFetchError } = await supabase
-        .from("attendance_change_logs")
-        .select("id")
-        .eq("attendance_id", recordId)
-        .order("changed_at", { ascending: false });
-
-      if (logFetchError) {
-        console.error("変更ログの取得に失敗しました:", logFetchError);
-        return;
-      }
-
-      const changeNumber = existingLogs ? existingLogs.length + 1 : 1;
-
       const { error: updateError } = await supabase
         .from("attendance_records")
         .update({ clock_in, clock_out })
@@ -136,9 +129,8 @@ export default function StaffAttendance() {
           new_clock_in: clock_in,
           old_clock_out: existingRecord.clock_out,
           new_clock_out: clock_out,
-          changed_by: 1, // 管理者ID（仮に1を設定）
+          changed_by: admin.id, // ログイン中の管理者ID
           changed_at: new Date().toISOString(),
-          change_number: changeNumber,
         });
 
       if (logError) {
@@ -182,7 +174,7 @@ export default function StaffAttendance() {
   }, [id, selectedMonth]);
 
   return (
-    <AdminLayout adminName="管理者">
+    <AdminLayout adminName={admin.name}>
       <div className="container mx-auto py-6">
         <h1 className="text-2xl font-bold mb-4">打刻履歴編集</h1>
         {error && <p className="text-red-500 mb-4">{error}</p>}
@@ -211,9 +203,11 @@ export default function StaffAttendance() {
           <tbody>
             {records.map((record) => (
               <tr key={record.id}>
+                {/* 勤務日 */}
                 <td className="border border-gray-300 px-4 py-2 text-center">
                   {record.work_date}
                 </td>
+                {/* 出勤時間 */}
                 <td className="border border-gray-300 px-4 py-2 text-center">
                   <div className="flex justify-center space-x-2">
                     <select
@@ -259,6 +253,7 @@ export default function StaffAttendance() {
                     </select>
                   </div>
                 </td>
+                {/* 退勤時間 */}
                 <td className="border border-gray-300 px-4 py-2 text-center">
                   <div className="flex justify-center space-x-2">
                     <select
@@ -304,6 +299,7 @@ export default function StaffAttendance() {
                     </select>
                   </div>
                 </td>
+                {/* 保存・変更ログ */}
                 <td className="border border-gray-300 px-4 py-2 text-center">
                   <button
                     onClick={() =>

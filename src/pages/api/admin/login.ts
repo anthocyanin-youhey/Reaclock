@@ -1,28 +1,39 @@
-// /src/pages/api/admin/login.ts
+//reaclock\src\pages\api\admin\login.ts
 import { supabase } from "../../../utils/supabaseCliants";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { serialize } from "cookie";
 
-// JWT_SECRET を安全に管理してください
+// 環境変数から JWT_SECRET を取得 (デフォルト値は開発用)
 const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
 
 export default async function handler(req, res) {
   if (req.method === "POST") {
     const { employee_number, password } = req.body;
 
+    // 入力値の確認
+    if (!employee_number || !password) {
+      return res
+        .status(400)
+        .json({ error: "社員番号とパスワードを入力してください。" });
+    }
+
     try {
+      // Supabaseから該当ユーザーを検索
       const { data: user, error } = await supabase
         .from("users")
         .select("id, password_hash, is_admin")
         .eq("employee_number", employee_number)
         .single();
 
+      // ユーザーが見つからない場合
       if (error || !user) {
         return res
-          .status(401)
-          .json({ error: "社員番号またはパスワードが間違っています。" });
+          .status(404)
+          .json({ error: "入力された社員番号は存在しません。" });
       }
 
+      // パスワードの検証
       const isPasswordValid = await bcrypt.compare(
         password,
         user.password_hash
@@ -30,37 +41,42 @@ export default async function handler(req, res) {
       if (!isPasswordValid) {
         return res
           .status(401)
-          .json({ error: "社員番号またはパスワードが間違っています。" });
+          .json({ error: "パスワードが正しくありません。" });
       }
 
-      // トークンのスコープを指定
-      const scope = "admin";
+      // 非管理者が管理者画面にログインしようとした場合
+      if (!user.is_admin) {
+        return res
+          .status(403)
+          .json({ error: "この画面には管理者権限が必要です。" });
+      }
 
-      // トークンを発行
-      const token = jwt.sign(
-        {
-          userId: user.id,
-          scope,
-        },
-        JWT_SECRET,
-        { expiresIn: "1h" }
-      );
+      // JWTトークンの作成
+      const token = jwt.sign({ userId: user.id, scope: "admin" }, JWT_SECRET, {
+        expiresIn: "1h",
+      });
 
-      // 管理者用のクッキーを設定
+      // クッキーを設定
       res.setHeader(
         "Set-Cookie",
-        `admin_session=${token}; Path=/; HttpOnly; SameSite=Lax`
+        serialize("admin_session", token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/",
+          maxAge: 3600, // 1時間
+        })
       );
 
+      // 成功レスポンス
       return res.status(200).json({ message: "ログイン成功！", token });
     } catch (err) {
       console.error("ログインエラー:", err);
-      return res
-        .status(500)
-        .json({ error: "ログイン処理中にエラーが発生しました。" });
+      return res.status(500).json({ error: "サーバーエラーが発生しました。" });
     }
   } else {
+    // POST以外のリクエストを拒否
     res.setHeader("Allow", ["POST"]);
-    res.status(405).end(`Method ${req.method} Not Allowed`);
+    return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
 }

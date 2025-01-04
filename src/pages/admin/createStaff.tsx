@@ -1,13 +1,17 @@
 // /src/pages/admin/createStaff.tsx
 import { useState, useEffect } from "react";
 import AdminLayout from "../../components/AdminLayout";
+import { requireAdminAuth } from "../../utils/authHelpers";
 
-export default function CreateStaff() {
-  const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
+export const getServerSideProps = requireAdminAuth;
+
+export default function CreateStaff({ admin }: { admin: { name: string } }) {
+  const [name, setName] = useState(""); // 名前
+  const [password, setPassword] = useState(""); // パスワード
   const [confirmPassword, setConfirmPassword] = useState(""); // 確認用パスワード
   const [employeeNumber, setEmployeeNumber] = useState(""); // 生成された社員番号
-  const [statusMessage, setStatusMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState(""); // ステータスメッセージ
+  const [adminName, setAdminName] = useState<string | null>(null); // ログイン中の管理者名（初期値は null）
 
   // 社員番号を生成
   const generateEmployeeNumber = async () => {
@@ -35,12 +39,31 @@ export default function CreateStaff() {
     }
   };
 
-  // 初回レンダリング時に社員番号を生成
+  // 管理者名を取得
+  const fetchAdminName = async () => {
+    try {
+      const response = await fetch("/api/admin/getAdminInfo");
+      const data = await response.json();
+
+      if (response.ok) {
+        setAdminName(data.name || "管理者");
+      } else {
+        console.error("管理者名取得エラー:", data.error);
+        setAdminName("管理者");
+      }
+    } catch (error) {
+      console.error("ネットワークエラー:", error);
+      setAdminName("管理者");
+    }
+  };
+
+  // 初回レンダリング時に社員番号を生成し、管理者名を取得
   useEffect(() => {
     generateEmployeeNumber();
+    fetchAdminName();
   }, []);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!name || !password || !confirmPassword) {
@@ -81,8 +104,17 @@ export default function CreateStaff() {
     }
   };
 
+  // 管理者名がまだ取得されていない場合はローディング表示
+  if (adminName === null) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-xl font-bold">読み込み中...</p>
+      </div>
+    );
+  }
+
   return (
-    <AdminLayout adminName="管理者">
+    <AdminLayout adminName={admin.name}>
       <div className="container mx-auto py-6">
         <h1 className="text-2xl font-bold mb-4">スタッフ新規登録</h1>
         <form onSubmit={handleSubmit} className="max-w-md mx-auto">

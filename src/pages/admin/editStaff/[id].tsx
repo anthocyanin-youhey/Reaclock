@@ -4,8 +4,15 @@ import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import { supabase } from "../../../utils/supabaseCliants";
 import AdminLayout from "../../../components/AdminLayout";
+import { requireAdminAuth } from "../../../utils/authHelpers";
 
-export default function EditStaff() {
+export const getServerSideProps = requireAdminAuth;
+
+export default function EditStaff({
+  admin,
+}: {
+  admin: { name: string; id: number };
+}) {
   const router = useRouter();
   const { id } = router.query; // URLパラメータからスタッフIDを取得
   const [staff, setStaff] = useState<any>({ name: "" });
@@ -64,7 +71,7 @@ export default function EditStaff() {
   };
 
   return (
-    <AdminLayout adminName="管理者">
+    <AdminLayout adminName={admin.name}>
       <div className="container mx-auto py-6">
         <h1 className="text-2xl font-bold mb-4">社員情報編集</h1>
         {error && <p className="text-red-500 mb-4">{error}</p>}
