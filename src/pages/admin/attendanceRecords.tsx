@@ -1,10 +1,10 @@
-// reaclock/src/pages/admin/attendanceRecords.tsx
+// /src/pages/admin/attendanceRecords.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabaseCliants";
 import AdminLayout from "../../components/AdminLayout";
-import * as XLSX from "xlsx"; // Excelエクスポート用ライブラリ
-
+import * as XLSX from "xlsx";
 import { requireAdminAuth } from "../../utils/authHelpers";
+import { formatToJapanTime } from "../../utils/dateHelpers";
 
 export const getServerSideProps = requireAdminAuth;
 
@@ -13,10 +13,10 @@ export default function AttendanceRecords({
 }: {
   admin: { name: string };
 }) {
-  const [staffList, setStaffList] = useState<any[]>([]); // 全スタッフ情報
-  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null); // 選択されたスタッフID
-  const [selectedStaffName, setSelectedStaffName] = useState<string>(""); // 選択されたスタッフ名
-  const [attendanceData, setAttendanceData] = useState<any[]>([]); // 打刻データ
+  const [staffList, setStaffList] = useState<any[]>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
+  const [selectedStaffName, setSelectedStaffName] = useState<string>("");
+  const [attendanceData, setAttendanceData] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
@@ -26,14 +26,12 @@ export default function AttendanceRecords({
   });
   const [error, setError] = useState<string>("");
 
-  // カレンダーの日付を生成
   const generateCalendarDays = (month: string) => {
     const [year, monthIndex] = month.split("-").map(Number);
     const daysInMonth = new Date(year, monthIndex, 0).getDate();
     return Array.from({ length: daysInMonth }, (_, i) => i + 1);
   };
 
-  // スタッフリストを取得
   const fetchStaffList = async () => {
     try {
       const { data, error } = await supabase
@@ -53,12 +51,11 @@ export default function AttendanceRecords({
     }
   };
 
-  // 選択されたスタッフの打刻データを取得
   const fetchAttendanceData = async (staffId: string) => {
     try {
       const { data, error } = await supabase
         .from("attendance_records")
-        .select("work_date, clock_in, clock_out") // 必要なカラムのみ取得
+        .select("work_date, clock_in, clock_out")
         .eq("user_id", staffId)
         .gte("work_date", `${selectedMonth}-01`)
         .lte(
@@ -77,7 +74,6 @@ export default function AttendanceRecords({
       } else {
         setAttendanceData(data || []);
 
-        // 選択されたスタッフの名前を取得
         const selectedStaff = staffList.find(
           (staff) => staff.id === parseInt(staffId)
         );
@@ -89,7 +85,6 @@ export default function AttendanceRecords({
     }
   };
 
-  // スタッフ選択時の処理
   const handleStaffSelection = (staffId: string) => {
     setSelectedStaffId(staffId);
     const selectedStaff = staffList.find(
@@ -98,7 +93,6 @@ export default function AttendanceRecords({
     setSelectedStaffName(selectedStaff ? selectedStaff.name : "不明");
   };
 
-  // Excel出力機能
   const exportToExcel = () => {
     const days = generateCalendarDays(selectedMonth);
     const exportData = days.map((day) => {
@@ -109,12 +103,11 @@ export default function AttendanceRecords({
       };
       return {
         日付: date,
-        出勤時間: record.clock_in,
-        退勤時間: record.clock_out,
+        出勤時間: formatToJapanTime(record.clock_in),
+        退勤時間: formatToJapanTime(record.clock_out),
       };
     });
 
-    // 対象スタッフ名と対象年月をヘッダーに追加
     const headerData = [
       {
         日付: `対象スタッフ: ${selectedStaffName}`,
@@ -122,16 +115,12 @@ export default function AttendanceRecords({
         退勤時間: "",
       },
       { 日付: `対象年月: ${selectedMonth}`, 出勤時間: "", 退勤時間: "" },
-      {}, // 空行
+      {},
     ];
 
-    // ヘッダー行を結合
     const fullData = [...headerData, ...exportData];
 
-    // ワークシート作成
     const ws = XLSX.utils.json_to_sheet(fullData);
-
-    // ワークブック作成とダウンロード
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Attendance Records");
     XLSX.writeFile(
@@ -158,7 +147,6 @@ export default function AttendanceRecords({
         <h1 className="text-2xl font-bold mb-6">打刻履歴</h1>
         {error && <p className="text-red-500 mb-4">{error}</p>}
 
-        {/* スタッフ選択 */}
         <div className="mb-6">
           <label className="block font-bold mb-2">スタッフを選択</label>
           <select
@@ -177,7 +165,6 @@ export default function AttendanceRecords({
           </select>
         </div>
 
-        {/* 月選択 */}
         <div className="mb-6">
           <label className="block font-bold mb-2">月を選択</label>
           <input
@@ -188,7 +175,6 @@ export default function AttendanceRecords({
           />
         </div>
 
-        {/* Excel出力ボタン */}
         <button
           onClick={exportToExcel}
           disabled={!selectedStaffId}
@@ -201,7 +187,6 @@ export default function AttendanceRecords({
           Excelに出力
         </button>
 
-        {/* カレンダー表示 */}
         {selectedStaffId && (
           <table className="w-full bg-white border-collapse border border-gray-300">
             <thead>
@@ -222,10 +207,10 @@ export default function AttendanceRecords({
                       {date}
                     </td>
                     <td className="border border-gray-300 px-4 py-2 text-center">
-                      {record.clock_in || "-"}
+                      {formatToJapanTime(record.clock_in)}
                     </td>
                     <td className="border border-gray-300 px-4 py-2 text-center">
-                      {record.clock_out || "-"}
+                      {formatToJapanTime(record.clock_out)}
                     </td>
                   </tr>
                 );

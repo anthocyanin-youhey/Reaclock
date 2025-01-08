@@ -1,4 +1,3 @@
-// /src/pages/admin/staffAttendance/[id].tsx
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import { supabase } from "../../../utils/supabaseCliants";
@@ -26,6 +25,13 @@ export default function StaffAttendance({
   const [changeLogs, setChangeLogs] = useState<any[]>([]); // 変更ログ
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false); // モーダル状態
 
+  const hourOptions = Array.from({ length: 24 }, (_, i) =>
+    String(i).padStart(2, "0")
+  ); // 時間選択肢
+  const minuteOptions = Array.from({ length: 60 }, (_, i) =>
+    String(i).padStart(2, "0")
+  ); // 分選択肢
+
   // 打刻履歴を取得
   const fetchRecords = async () => {
     try {
@@ -42,7 +48,7 @@ export default function StaffAttendance({
         .eq("user_id", id)
         .gte("work_date", firstDay)
         .lte("work_date", lastDay)
-        .order("work_date", { ascending: false });
+        .order("work_date", { ascending: true });
 
       if (error) {
         setError("打刻履歴の取得に失敗しました。");
@@ -73,30 +79,21 @@ export default function StaffAttendance({
     }
   };
 
-  // 時刻変更ハンドラー
-  const handleTimeChange = (recordId: string, field: string, value: string) => {
-    setRecords((prev) =>
-      prev.map((record) => {
-        if (record.id === recordId) {
-          const updatedRecord = { ...record, [field]: value };
-          updatedRecord.hasChanges =
-            updatedRecord.clock_in_hour !== record.clock_in_hour ||
-            updatedRecord.clock_in_minute !== record.clock_in_minute ||
-            updatedRecord.clock_out_hour !== record.clock_out_hour ||
-            updatedRecord.clock_out_minute !== record.clock_out_minute;
-          return updatedRecord;
-        }
-        return record;
-      })
-    );
-  };
+  // 保存処理
+  const saveRecord = async (record: any) => {
+    const {
+      id: recordId,
+      clock_in_hour,
+      clock_in_minute,
+      clock_out_hour,
+      clock_out_minute,
+    } = record;
 
-  // レコードの保存
-  const saveRecord = async (recordId: string, updatedRecord: any) => {
+    const clock_in = `${clock_in_hour}:${clock_in_minute}`;
+    const clock_out = `${clock_out_hour}:${clock_out_minute}`;
+
     try {
-      const clock_in = `${updatedRecord.clock_in_hour}:${updatedRecord.clock_in_minute}`;
-      const clock_out = `${updatedRecord.clock_out_hour}:${updatedRecord.clock_out_minute}`;
-
+      // 現在のレコードを取得
       const { data: existingRecord, error: fetchError } = await supabase
         .from("attendance_records")
         .select("clock_in, clock_out, user_id")
@@ -109,6 +106,7 @@ export default function StaffAttendance({
         return;
       }
 
+      // レコードを更新
       const { error: updateError } = await supabase
         .from("attendance_records")
         .update({ clock_in, clock_out })
@@ -120,6 +118,24 @@ export default function StaffAttendance({
         return;
       }
 
+      // 変更ログ番号の取得
+      const { count: logCount, error: logCountError } = await supabase
+        .from("attendance_change_logs")
+        .select("id", { count: "exact" })
+        .eq("attendance_id", recordId);
+
+      if (logCountError) {
+        console.error("ログ番号取得エラー:", logCountError);
+      }
+
+      const changeNumber = (logCount || 0) + 1; // 初回の場合は1
+
+      // 現在の日本時間
+      const changedAt = new Date().toLocaleString("ja-JP", {
+        timeZone: "Asia/Tokyo",
+      });
+
+      // 変更ログの保存
       const { error: logError } = await supabase
         .from("attendance_change_logs")
         .insert({
@@ -129,18 +145,19 @@ export default function StaffAttendance({
           new_clock_in: clock_in,
           old_clock_out: existingRecord.clock_out,
           new_clock_out: clock_out,
-          changed_by: admin.id, // ログイン中の管理者ID
-          changed_at: new Date().toISOString(),
+          changed_by: admin.id, // 管理者ID
+          changed_at: changedAt, // 日本時間の変更日時
+          change_number: changeNumber, // ログ番号
         });
 
       if (logError) {
-        console.error("変更ログの保存に失敗しました:", logError);
+        console.error("変更ログ保存エラー:", logError);
       } else {
         console.log("変更ログが記録されました。");
       }
 
       alert("保存が完了しました！");
-      fetchRecords();
+      fetchRecords(); // データを再取得
     } catch (err) {
       console.error("保存エラー:", err);
       alert("保存中にエラーが発生しました。");
@@ -154,19 +171,62 @@ export default function StaffAttendance({
         .from("attendance_change_logs")
         .select("*")
         .eq("attendance_id", recordId)
-        .order("changed_at", { ascending: false });
+        .order("change_number", { ascending: true });
 
       if (error) {
         alert("変更ログの取得に失敗しました。");
         console.error(error);
       } else {
-        setChangeLogs(data);
+        setChangeLogs(
+          data.map((log) => ({
+            ...log,
+            changed_at: new Date(log.changed_at).toLocaleString("ja-JP", {
+              timeZone: "Asia/Tokyo",
+            }),
+          }))
+        );
         setIsModalOpen(true); // モーダルを表示
       }
     } catch (err) {
       console.error("変更ログ取得エラー:", err);
       alert("変更ログ取得中にエラーが発生しました。");
     }
+  };
+
+  // 変更ログの削除
+  const deleteChangeLog = async (logId: string) => {
+    try {
+      const { error } = await supabase
+        .from("attendance_change_logs")
+        .delete()
+        .eq("id", logId);
+
+      if (error) {
+        alert("変更ログの削除に失敗しました。");
+        console.error(error);
+      } else {
+        alert("変更ログを削除しました！");
+        setChangeLogs((prev) => prev.filter((log) => log.id !== logId));
+      }
+    } catch (err) {
+      console.error("削除エラー:", err);
+      alert("削除中にエラーが発生しました。");
+    }
+  };
+
+  // プルダウンでの時刻変更ハンドラー
+  const handleTimeChange = (recordId: string, field: string, value: string) => {
+    setRecords((prev) =>
+      prev.map((record) =>
+        record.id === recordId
+          ? {
+              ...record,
+              [field]: value,
+              hasChanges: true, // 変更があったフラグをセット
+            }
+          : record
+      )
+    );
   };
 
   useEffect(() => {
@@ -197,7 +257,7 @@ export default function StaffAttendance({
               <th className="border border-gray-300 px-4 py-2">勤務日</th>
               <th className="border border-gray-300 px-4 py-2">出勤時間</th>
               <th className="border border-gray-300 px-4 py-2">退勤時間</th>
-              <th className="border border-gray-300 px-4 py-2">保存・ログ</th>
+              <th className="border border-gray-300 px-4 py-2">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -209,7 +269,7 @@ export default function StaffAttendance({
                 </td>
                 {/* 出勤時間 */}
                 <td className="border border-gray-300 px-4 py-2 text-center">
-                  <div className="flex justify-center space-x-2">
+                  <div className="flex justify-center">
                     <select
                       value={record.clock_in_hour}
                       onChange={(e) =>
@@ -219,18 +279,14 @@ export default function StaffAttendance({
                           e.target.value
                         )
                       }
-                      className="border px-2 py-1"
+                      className="border rounded px-2 py-1 mr-2"
                     >
-                      {Array.from({ length: 24 }, (_, hour) => (
-                        <option
-                          key={hour}
-                          value={String(hour).padStart(2, "0")}
-                        >
-                          {String(hour).padStart(2, "0")}
+                      {hourOptions.map((hour) => (
+                        <option key={hour} value={hour}>
+                          {hour}
                         </option>
                       ))}
                     </select>
-                    <span>:</span>
                     <select
                       value={record.clock_in_minute}
                       onChange={(e) =>
@@ -240,14 +296,11 @@ export default function StaffAttendance({
                           e.target.value
                         )
                       }
-                      className="border px-2 py-1"
+                      className="border rounded px-2 py-1"
                     >
-                      {Array.from({ length: 60 }, (_, minute) => (
-                        <option
-                          key={minute}
-                          value={String(minute).padStart(2, "0")}
-                        >
-                          {String(minute).padStart(2, "0")}
+                      {minuteOptions.map((minute) => (
+                        <option key={minute} value={minute}>
+                          {minute}
                         </option>
                       ))}
                     </select>
@@ -255,7 +308,7 @@ export default function StaffAttendance({
                 </td>
                 {/* 退勤時間 */}
                 <td className="border border-gray-300 px-4 py-2 text-center">
-                  <div className="flex justify-center space-x-2">
+                  <div className="flex justify-center">
                     <select
                       value={record.clock_out_hour}
                       onChange={(e) =>
@@ -265,18 +318,14 @@ export default function StaffAttendance({
                           e.target.value
                         )
                       }
-                      className="border px-2 py-1"
+                      className="border rounded px-2 py-1 mr-2"
                     >
-                      {Array.from({ length: 24 }, (_, hour) => (
-                        <option
-                          key={hour}
-                          value={String(hour).padStart(2, "0")}
-                        >
-                          {String(hour).padStart(2, "0")}
+                      {hourOptions.map((hour) => (
+                        <option key={hour} value={hour}>
+                          {hour}
                         </option>
                       ))}
                     </select>
-                    <span>:</span>
                     <select
                       value={record.clock_out_minute}
                       onChange={(e) =>
@@ -286,31 +335,21 @@ export default function StaffAttendance({
                           e.target.value
                         )
                       }
-                      className="border px-2 py-1"
+                      className="border rounded px-2 py-1"
                     >
-                      {Array.from({ length: 60 }, (_, minute) => (
-                        <option
-                          key={minute}
-                          value={String(minute).padStart(2, "0")}
-                        >
-                          {String(minute).padStart(2, "0")}
+                      {minuteOptions.map((minute) => (
+                        <option key={minute} value={minute}>
+                          {minute}
                         </option>
                       ))}
                     </select>
                   </div>
                 </td>
-                {/* 保存・変更ログ */}
+                {/* 操作ボタン */}
                 <td className="border border-gray-300 px-4 py-2 text-center">
                   <button
-                    onClick={() =>
-                      saveRecord(record.id, {
-                        clock_in_hour: record.clock_in_hour,
-                        clock_in_minute: record.clock_in_minute,
-                        clock_out_hour: record.clock_out_hour,
-                        clock_out_minute: record.clock_out_minute,
-                      })
-                    }
-                    disabled={!record.hasChanges} // 変更がない場合は無効化
+                    onClick={() => saveRecord(record)}
+                    disabled={!record.hasChanges}
                     className={`px-4 py-2 rounded ${
                       record.hasChanges
                         ? "bg-blue-500 text-white hover:bg-blue-600"
@@ -346,22 +385,27 @@ export default function StaffAttendance({
             {changeLogs.length > 0 ? (
               <ul>
                 {changeLogs.map((log) => (
-                  <li key={log.id} className="mb-2">
+                  <li key={log.id} className="mb-2 border-b pb-2">
                     <p>
                       <strong>変更番号:</strong> {log.change_number}
                     </p>
                     <p>
-                      <strong>変更日時:</strong>{" "}
-                      {new Date(log.changed_at).toLocaleString()}
+                      <strong>変更日時:</strong> {log.changed_at}
                     </p>
                     <p>
-                      <strong>出勤時刻:</strong> {log.old_clock_in || "なし"} →{" "}
-                      {log.new_clock_in || "なし"}
+                      <strong>出勤時刻:</strong> {log.old_clock_in || "--"} →{" "}
+                      {log.new_clock_in || "--"}
                     </p>
                     <p>
-                      <strong>退勤時刻:</strong> {log.old_clock_out || "なし"} →{" "}
-                      {log.new_clock_out || "なし"}
+                      <strong>退勤時刻:</strong> {log.old_clock_out || "--"} →{" "}
+                      {log.new_clock_out || "--"}
                     </p>
+                    <button
+                      onClick={() => deleteChangeLog(log.id)}
+                      className="mt-2 bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600"
+                    >
+                      削除
+                    </button>
                   </li>
                 ))}
               </ul>

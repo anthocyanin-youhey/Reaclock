@@ -1,4 +1,4 @@
-// src/components/AdminLayout.tsx
+//reaclock\src\components\AdminLayout.tsx
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
@@ -8,7 +8,7 @@ export default function AdminLayout({
   adminName,
 }: {
   children: React.ReactNode;
-  adminName?: string; // 管理者名（オプション）
+  adminName?: string;
 }) {
   const router = useRouter();
   const [logoutMessage, setLogoutMessage] = useState<string>("");
@@ -58,12 +58,51 @@ export default function AdminLayout({
 
   return (
     <div className="flex flex-col min-h-screen">
-      <header className="bg-blue-500 text-white">
+      <header className="bg-blue-500 text-white relative">
         <div className="container mx-auto flex justify-between items-center py-4 px-6">
+          {/* タイトル */}
           <h1 className="text-xl font-bold">管理者ダッシュボード</h1>
 
+          {/* ナビゲーション（デスクトップ） */}
+          <nav className="hidden md:flex space-x-4 items-center">
+            <Link href="/admin/dashboard">
+              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
+                ホーム
+              </span>
+            </Link>
+            <Link href="/admin/createStaff">
+              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
+                スタッフ新規登録
+              </span>
+            </Link>
+            <Link href="/admin/staffList">
+              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
+                スタッフ一覧
+              </span>
+            </Link>
+            <Link href="/admin/attendanceRecords">
+              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
+                打刻履歴
+              </span>
+            </Link>
+          </nav>
+
+          {/* ログイン中の管理者名とログアウトボタン */}
+          <div className="hidden md:flex items-center space-x-4">
+            <p className="text-sm font-light">
+              {displayedAdminName} さんでログイン中
+            </p>
+            <button
+              onClick={handleLogout}
+              className="py-2 px-4 rounded border border-red-500 bg-red-500 text-white text-sm hover:bg-white hover:text-red-500 transition-all"
+            >
+              ログアウト
+            </button>
+          </div>
+
+          {/* ハンバーガーメニュー */}
           <button
-            className="block md:hidden text-white focus:outline-none"
+            className="block md:hidden text-white focus:outline-none z-50"
             onClick={() => setMenuOpen(!menuOpen)}
           >
             <svg
@@ -83,40 +122,65 @@ export default function AdminLayout({
               />
             </svg>
           </button>
-
-          <nav
-            className={`${
-              menuOpen ? "block" : "hidden"
-            } md:flex space-x-4 items-center`}
-          >
-            <Link href="/admin/dashboard">
-              <span className="hover:underline cursor-pointer">ホーム</span>
-            </Link>
-            <Link href="/admin/createStaff">
-              <span className="hover:underline cursor-pointer">
-                スタッフ新規登録
-              </span>
-            </Link>
-            <Link href="/admin/staffList">
-              <span className="hover:underline cursor-pointer">
-                スタッフ一覧
-              </span>
-            </Link>
-            <Link href="/admin/attendanceRecords">
-              <span className="hover:underline cursor-pointer">打刻履歴</span>
-            </Link>
-            <button
-              onClick={handleLogout}
-              className="hover:underline text-white bg-transparent border-none cursor-pointer"
-            >
-              ログアウト
-            </button>
-          </nav>
-
-          <p className="hidden md:block text-sm font-light ml-4">
-            {displayedAdminName} さんでログイン中
-          </p>
         </div>
+
+        {/* モバイルメニュー */}
+        <nav
+          className={`fixed top-0 right-0 h-full bg-blue-600 text-white w-64 transform ${
+            menuOpen ? "translate-x-0" : "translate-x-full"
+          } transition-transform duration-300 ease-in-out z-40`}
+        >
+          <button
+            className="absolute top-4 right-4 text-white text-xl focus:outline-none"
+            onClick={() => setMenuOpen(false)}
+          >
+            ✕
+          </button>
+          <ul className="mt-16 space-y-4 px-6">
+            <li>
+              <Link
+                href="/admin/dashboard"
+                className="block py-2 px-4 rounded hover:bg-blue-700 cursor-pointer"
+              >
+                ホーム
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/admin/createStaff"
+                className="block py-2 px-4 rounded hover:bg-blue-700 cursor-pointer"
+              >
+                スタッフ新規登録
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/admin/staffList"
+                className="block py-2 px-4 rounded hover:bg-blue-700 cursor-pointer"
+              >
+                スタッフ一覧
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/admin/attendanceRecords"
+                className="block py-2 px-4 rounded hover:bg-blue-700 cursor-pointer"
+              >
+                打刻履歴
+              </Link>
+            </li>
+            <li className="mt-10">
+              {" "}
+              {/* 他のボタンから少し距離をとる */}
+              <button
+                onClick={handleLogout}
+                className="block w-full py-2 px-4 rounded border border-red-500 bg-red-500 text-white text-sm hover:bg-white hover:text-red-500 transition-all"
+              >
+                ログアウト
+              </button>
+            </li>
+          </ul>
+        </nav>
       </header>
 
       {logoutMessage && (

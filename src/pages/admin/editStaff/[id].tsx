@@ -1,5 +1,3 @@
-// /src/pages/admin/editStaff/[id].tsx
-
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import { supabase } from "../../../utils/supabaseCliants";
@@ -14,18 +12,18 @@ export default function EditStaff({
   admin: { name: string; id: number };
 }) {
   const router = useRouter();
-  const { id } = router.query; // URLパラメータからスタッフIDを取得
-  const [staff, setStaff] = useState<any>({ name: "" });
+  const { id } = router.query;
+  const staffId = parseInt(id as string, 10);
+  const [staff, setStaff] = useState<any>({ name: "", is_admin: false });
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
 
-  // スタッフ情報を取得
   const fetchStaffData = async () => {
     const { data, error } = await supabase
       .from("users")
-      .select("name")
-      .eq("id", id)
+      .select("name, is_admin")
+      .eq("id", staffId)
       .single();
 
     if (error) {
@@ -42,7 +40,6 @@ export default function EditStaff({
     }
   }, [id]);
 
-  // スタッフ情報を更新
   const handleUpdate = async () => {
     if (password !== confirmPassword) {
       alert("パスワードが一致しません。");
@@ -53,14 +50,19 @@ export default function EditStaff({
       const response = await fetch("/api/admin/updateStaff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, name: staff.name, password }),
+        body: JSON.stringify({
+          id: staffId,
+          name: staff.name,
+          password: password || null,
+          is_admin: staff.is_admin,
+        }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
         alert(data.message || "スタッフ情報を更新しました！");
-        router.push("/admin/staffList"); // スタッフ一覧画面に戻る
+        router.push("/admin/staffList");
       } else {
         alert(data.error || "スタッフ情報の更新に失敗しました。");
       }
@@ -76,7 +78,6 @@ export default function EditStaff({
         <h1 className="text-2xl font-bold mb-4">社員情報編集</h1>
         {error && <p className="text-red-500 mb-4">{error}</p>}
         <div className="space-y-4">
-          {/* 名前入力欄 */}
           <div>
             <label className="block font-bold mb-2">名前</label>
             <input
@@ -88,11 +89,10 @@ export default function EditStaff({
             />
           </div>
 
-          {/* パスワード入力欄 */}
           <div>
             <label className="block font-bold mb-2">新しいパスワード</label>
             <input
-              type="password"
+              type="text"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="パスワードを入力"
@@ -100,11 +100,10 @@ export default function EditStaff({
             />
           </div>
 
-          {/* パスワード確認欄 */}
           <div>
             <label className="block font-bold mb-2">パスワード確認</label>
             <input
-              type="password"
+              type="text"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="パスワードを再入力"
@@ -112,7 +111,17 @@ export default function EditStaff({
             />
           </div>
 
-          {/* 更新ボタン */}
+          <div className="flex items-center space-x-4">
+            <label className="font-bold">管理者権限:</label>
+            <input
+              type="checkbox"
+              checked={staff.is_admin}
+              onChange={(e) =>
+                setStaff({ ...staff, is_admin: e.target.checked })
+              }
+            />
+          </div>
+
           <button
             onClick={handleUpdate}
             className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600"
@@ -120,7 +129,6 @@ export default function EditStaff({
             更新
           </button>
 
-          {/* スタッフ一覧に戻るボタン */}
           <button
             onClick={() => router.push("/admin/staffList")}
             className="mt-4 bg-gray-300 text-gray-700 px-6 py-2 rounded hover:bg-gray-400"

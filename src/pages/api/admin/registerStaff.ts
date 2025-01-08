@@ -4,9 +4,9 @@ import bcrypt from "bcrypt";
 
 export default async function handler(req, res) {
   if (req.method === "POST") {
-    const { name, password } = req.body; // employee_numberは自動生成するため受け取らない
+    const { name, password, is_admin } = req.body; // is_adminを追加で受け取る
 
-    if (!name || !password) {
+    if (!name || !password || is_admin === undefined) {
       return res
         .status(400)
         .json({ error: "全てのフィールドを入力してください。" });
@@ -45,7 +45,8 @@ export default async function handler(req, res) {
         name,
         employee_number: newEmployeeNumber,
         password_hash: passwordHash,
-        is_admin: false, // 管理者ではない
+        is_admin, // フロントエンドから受け取ったis_adminを保存
+        created_at: new Date(),
       });
 
       if (error) {

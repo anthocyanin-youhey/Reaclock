@@ -10,8 +10,8 @@ export default function CreateStaff({ admin }: { admin: { name: string } }) {
   const [password, setPassword] = useState(""); // パスワード
   const [confirmPassword, setConfirmPassword] = useState(""); // 確認用パスワード
   const [employeeNumber, setEmployeeNumber] = useState(""); // 生成された社員番号
+  const [isAdmin, setIsAdmin] = useState(false); // 管理者権限
   const [statusMessage, setStatusMessage] = useState(""); // ステータスメッセージ
-  const [adminName, setAdminName] = useState<string | null>(null); // ログイン中の管理者名（初期値は null）
 
   // 社員番号を生成
   const generateEmployeeNumber = async () => {
@@ -39,28 +39,9 @@ export default function CreateStaff({ admin }: { admin: { name: string } }) {
     }
   };
 
-  // 管理者名を取得
-  const fetchAdminName = async () => {
-    try {
-      const response = await fetch("/api/admin/getAdminInfo");
-      const data = await response.json();
-
-      if (response.ok) {
-        setAdminName(data.name || "管理者");
-      } else {
-        console.error("管理者名取得エラー:", data.error);
-        setAdminName("管理者");
-      }
-    } catch (error) {
-      console.error("ネットワークエラー:", error);
-      setAdminName("管理者");
-    }
-  };
-
-  // 初回レンダリング時に社員番号を生成し、管理者名を取得
+  // 初回レンダリング時に社員番号を生成
   useEffect(() => {
     generateEmployeeNumber();
-    fetchAdminName();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -84,6 +65,7 @@ export default function CreateStaff({ admin }: { admin: { name: string } }) {
           name,
           password,
           employee_number: employeeNumber,
+          is_admin: isAdmin, // 管理者権限を送信
         }),
       });
 
@@ -94,6 +76,7 @@ export default function CreateStaff({ admin }: { admin: { name: string } }) {
         setName("");
         setPassword("");
         setConfirmPassword("");
+        setIsAdmin(false); // 管理者権限をリセット
         generateEmployeeNumber(); // 新しい社員番号を生成
       } else {
         setStatusMessage(data.error || "スタッフ登録に失敗しました。");
@@ -103,15 +86,6 @@ export default function CreateStaff({ admin }: { admin: { name: string } }) {
       setStatusMessage("ネットワークエラーが発生しました。");
     }
   };
-
-  // 管理者名がまだ取得されていない場合はローディング表示
-  if (adminName === null) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-xl font-bold">読み込み中...</p>
-      </div>
-    );
-  }
 
   return (
     <AdminLayout adminName={admin.name}>
@@ -149,7 +123,7 @@ export default function CreateStaff({ admin }: { admin: { name: string } }) {
               パスワード
             </label>
             <input
-              type="password"
+              type="text" // パスワードを伏せない設定
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-2 border rounded"
@@ -163,12 +137,26 @@ export default function CreateStaff({ admin }: { admin: { name: string } }) {
               パスワード（確認）
             </label>
             <input
-              type="password"
+              type="text" // パスワードを伏せない設定
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full px-4 py-2 border rounded"
               required
             />
+          </div>
+
+          {/* 管理者権限付与チェックボックス */}
+          <div className="mb-4 flex items-center">
+            <input
+              type="checkbox"
+              id="isAdmin"
+              checked={isAdmin}
+              onChange={(e) => setIsAdmin(e.target.checked)}
+              className="mr-2"
+            />
+            <label htmlFor="isAdmin" className="font-bold text-gray-700">
+              管理者権限を付与
+            </label>
           </div>
 
           {/* ステータスメッセージ */}
