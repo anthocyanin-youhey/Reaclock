@@ -192,8 +192,12 @@ export default function AttendanceRecords({
             <thead>
               <tr>
                 <th className="border border-gray-300 px-4 py-2">日付</th>
-                <th className="border border-gray-300 px-4 py-2">出勤時間</th>
-                <th className="border border-gray-300 px-4 py-2">退勤時間</th>
+                <th className="border border-gray-300 px-4 py-2">
+                  出勤打刻時間
+                </th>
+                <th className="border border-gray-300 px-4 py-2">
+                  退勤打刻時間
+                </th>
               </tr>
             </thead>
             <tbody>

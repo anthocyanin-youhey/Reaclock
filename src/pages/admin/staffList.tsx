@@ -1,3 +1,4 @@
+// src/pages/admin/staffList.tsx
 import AdminLayout from "../../components/AdminLayout"; // 共通レイアウト
 import { useRouter } from "next/router"; // ページ遷移用
 import { useState, useEffect } from "react"; // 状態管理と副作用
@@ -152,7 +153,7 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
                     className="text-blue-500 hover:underline mr-2"
                     onClick={() => router.push(`/admin/editStaff/${staff.id}`)}
                   >
-                    編集
+                    社員情報編集
                   </button>
 
                   {/* 打刻履歴編集ボタン */}
@@ -162,7 +163,25 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
                       router.push(`/admin/staffAttendance/${staff.id}`)
                     }
                   >
-                    打刻履歴
+                    打刻履歴編集
+                  </button>
+
+                  {/* 勤務データ登録ボタン */}
+                  <button
+                    className="text-green-500 hover:underline mr-2"
+                    onClick={() => router.push(`/admin/workData/${staff.id}`)}
+                  >
+                    勤務データ登録
+                  </button>
+
+                  {/* シフト登録ボタン */}
+                  <button
+                    className="text-orange-500 hover:underline mr-2"
+                    onClick={() =>
+                      router.push(`/admin/shiftRegister/${staff.id}`)
+                    }
+                  >
+                    シフト登録
                   </button>
 
                   {/* スタッフ削除ボタン */}
@@ -173,7 +192,7 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
                       setIsModalOpen(true); // モーダルを開く
                     }}
                   >
-                    削除
+                    社員情報削除
                   </button>
                 </td>
               </tr>

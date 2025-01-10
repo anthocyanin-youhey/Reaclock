@@ -1,10 +1,11 @@
+//reaclock\src\pages\api\user\clock.ts
 import { supabase } from "../../../utils/supabaseCliants";
 
 export default async function handler(req, res) {
   if (req.method === "POST") {
-    const { userId, type } = req.body; // userId: ユーザーID, type: "clock_in" または "clock_out"
+    const { userId, type, time, date } = req.body;
 
-    if (!userId || !type) {
+    if (!userId || !type || !time || !date) {
       return res
         .status(400)
         .json({ error: "リクエストデータが不足しています。" });
@@ -15,17 +16,12 @@ export default async function handler(req, res) {
     }
 
     try {
-      const currentDate = new Date().toISOString().split("T")[0]; // 現在の日付 (YYYY-MM-DD)
-      const currentTime = new Date().toTimeString().split(" ")[0]; // 現在の時刻 (HH:mm:ss)
-
-      // レコード作成
       const record = {
         user_id: userId,
-        work_date: currentDate,
-        [type]: currentTime, // "clock_in" または "clock_out" に現在時刻を設定
+        work_date: date,
+        [type]: time,
       };
 
-      // データベースにアップサート (user_id と work_date を基準に更新または挿入)
       const { error } = await supabase
         .from("attendance_records")
         .upsert([record], { onConflict: "user_id,work_date" });
