@@ -1,7 +1,9 @@
-//reaclock\src\components\AdminLayout.tsx
+// src/components/AdminLayout.tsx
+
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
+import { useLateCount } from "../context/LateCountContext"; // 遅刻件数を取得するためのコンテキスト
 
 export default function AdminLayout({
   children,
@@ -14,6 +16,9 @@ export default function AdminLayout({
   const [logoutMessage, setLogoutMessage] = useState<string>("");
   const [menuOpen, setMenuOpen] = useState(false); // ハンバーガーメニューの開閉状態
   const [fetchedAdminName, setFetchedAdminName] = useState<string>("");
+
+  // 未対応遅刻件数を取得するコンテキスト
+  const { lateCount } = useLateCount();
 
   // APIから管理者名を取得（バックアップ用）
   useEffect(() => {
@@ -83,6 +88,16 @@ export default function AdminLayout({
             <Link href="/admin/attendanceRecords">
               <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
                 打刻履歴
+              </span>
+            </Link>
+            <Link href="/admin/attendanceStatus">
+              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer flex items-center">
+                出欠/遅刻ステータス
+                {lateCount > 0 && (
+                  <span className="ml-2 text-yellow-500 font-bold">
+                    ⚠ 未対応{lateCount}件
+                  </span>
+                )}
               </span>
             </Link>
           </nav>
@@ -169,9 +184,20 @@ export default function AdminLayout({
                 打刻履歴
               </Link>
             </li>
+            <li>
+              <Link
+                href="/admin/attendanceStatus"
+                className="block py-2 px-4 rounded hover:bg-blue-700 cursor-pointer flex items-center"
+              >
+                出欠/遅刻ステータス
+                {lateCount > 0 && (
+                  <span className="ml-2 text-yellow-500 font-bold">
+                    ⚠ 遅刻者未対応{lateCount}件
+                  </span>
+                )}
+              </Link>
+            </li>
             <li className="mt-10">
-              {" "}
-              {/* 他のボタンから少し距離をとる */}
               <button
                 onClick={handleLogout}
                 className="block w-full py-2 px-4 rounded border border-red-500 bg-red-500 text-white text-sm hover:bg-white hover:text-red-500 transition-all"

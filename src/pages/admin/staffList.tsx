@@ -92,6 +92,15 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
         <h1 className="text-2xl font-bold mb-4">スタッフ一覧</h1>
         {errorMessage && <p className="text-red-500">{errorMessage}</p>}
 
+        {/* 取扱説明文 */}
+        <div className="mb-6 p-4 bg-blue-100 border border-blue-300 rounded">
+          <p className="text-sm text-blue-800">
+            シフトを登録するには、各スタッフの「勤務地データ」を先に登録してください。
+            <br />
+            登録した勤務地データを使ってシフト登録を行うシステムになっています。
+          </p>
+        </div>
+
         {/* 検索欄 */}
         <div className="mb-4 flex items-center">
           <input
@@ -171,7 +180,7 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
                     className="text-green-500 hover:underline mr-2"
                     onClick={() => router.push(`/admin/workData/${staff.id}`)}
                   >
-                    勤務データ登録
+                    勤務地データ登録
                   </button>
 
                   {/* シフト登録ボタン */}

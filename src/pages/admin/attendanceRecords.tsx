@@ -1,11 +1,8 @@
-// src/pages/admin/attendanceRecords.tsx
-
 import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabaseCliants";
 import AdminLayout from "../../components/AdminLayout";
 import { requireAdminAuth } from "../../utils/authHelpers";
 import { formatToJapanTime } from "../../utils/dateHelpers";
-import * as XLSX from "xlsx"; // Excel出力用
 
 export const getServerSideProps = requireAdminAuth;
 
@@ -16,7 +13,6 @@ export default function AttendanceRecords({
 }) {
   const [staffList, setStaffList] = useState<any[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
-  const [selectedStaffName, setSelectedStaffName] = useState<string>("不明");
   const [attendanceAndShiftData, setAttendanceAndShiftData] = useState<any[]>(
     []
   );
@@ -29,10 +25,13 @@ export default function AttendanceRecords({
   });
   const [error, setError] = useState<string>("");
 
-  const generateCalendarDays = (month: string) => {
+  const generateDatesForMonth = (month: string) => {
     const [year, monthIndex] = month.split("-").map(Number);
     const daysInMonth = new Date(year, monthIndex, 0).getDate();
-    return Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const day = String(i + 1).padStart(2, "0");
+      return `${month}-${day}`;
+    });
   };
 
   const fetchStaffList = async () => {
@@ -60,9 +59,11 @@ export default function AttendanceRecords({
         .from("attendance_records")
         .select(
           `
+          id,
           work_date,
           clock_in,
           clock_out,
+          status,
           shifts!left (
             start_time,
             end_time,
@@ -86,7 +87,7 @@ export default function AttendanceRecords({
         .order("work_date", { ascending: true });
 
       if (error) {
-        setError("データの取得に失敗しました。");
+        setError("勤怠データの取得に失敗しました。");
         console.error("勤怠データ取得エラー:", error);
       } else {
         setAttendanceAndShiftData(data || []);
@@ -97,12 +98,73 @@ export default function AttendanceRecords({
     }
   };
 
-  const handleStaffSelection = (staffId: string) => {
-    setSelectedStaffId(staffId);
-    const selectedStaff = staffList.find(
-      (staff) => staff.id === parseInt(staffId)
-    );
-    setSelectedStaffName(selectedStaff ? selectedStaff.name : "不明");
+  const markAsAbsent = async (recordId: number) => {
+    try {
+      const { error } = await supabase
+        .from("attendance_records")
+        .update({ status: "欠勤" })
+        .eq("id", recordId);
+
+      if (error) {
+        console.error("欠勤ステータス更新エラー:", error);
+      } else if (selectedStaffId) {
+        fetchAttendanceAndShiftData(selectedStaffId);
+      }
+    } catch (err) {
+      console.error("欠勤更新中にエラーが発生しました:", err);
+    }
+  };
+
+  const cancelAbsent = async (recordId: number) => {
+    try {
+      const { error } = await supabase
+        .from("attendance_records")
+        .update({ status: null })
+        .eq("id", recordId);
+
+      if (error) {
+        console.error("欠勤取り消しエラー:", error);
+      } else if (selectedStaffId) {
+        fetchAttendanceAndShiftData(selectedStaffId);
+      }
+    } catch (err) {
+      console.error("欠勤取り消し中にエラーが発生しました:", err);
+    }
+  };
+
+  const calculateStatus = (record: any) => {
+    if (!record.shifts) return { status: "-", lateTime: null }; // シフトが登録されていない場合
+
+    if (record.status === "欠勤") return { status: "欠勤", lateTime: null };
+
+    const clockIn = record.clock_in
+      ? new Date(`1970-01-01T${record.clock_in}`)
+      : null;
+    const startTime = record.shifts.start_time
+      ? new Date(`1970-01-01T${record.shifts.start_time}`)
+      : null;
+
+    if (!clockIn) return { status: "未出勤", lateTime: null };
+
+    if (startTime && clockIn > startTime) {
+      const diffMs = clockIn.getTime() - startTime.getTime();
+      const lateMinutes = Math.floor(diffMs / (1000 * 60));
+      const hours = Math.floor(lateMinutes / 60);
+      const minutes = lateMinutes % 60;
+      return {
+        status: "遅刻",
+        lateTime: `${hours > 0 ? `${hours}時間` : ""}${minutes}分`,
+      };
+    }
+
+    return { status: "出勤", lateTime: null };
+  };
+
+  const roundDownToNearest15Minutes = (date: Date) => {
+    const minutes = date.getMinutes();
+    const roundedMinutes = Math.floor(minutes / 15) * 15;
+    date.setMinutes(roundedMinutes, 0, 0); // 秒・ミリ秒をリセット
+    return date;
   };
 
   const calculateDailyPay = (record: any) => {
@@ -112,90 +174,27 @@ export default function AttendanceRecords({
     const hourlyRate = shift.hourly_rate;
     if (!hourlyRate) return "-";
 
-    const startTime = new Date(`1970-01-01T${shift.start_time}`);
-    const endTime = new Date(`1970-01-01T${shift.end_time}`);
-    let clockIn = new Date(`1970-01-01T${record.clock_in}`);
-    let clockOut = new Date(`1970-01-01T${record.clock_out}`);
+    let shiftStart = new Date(`1970-01-01T${shift.start_time}`);
+    let shiftEnd = new Date(`1970-01-01T${shift.end_time}`);
 
-    // 出勤打刻がシフト開始時間より早い場合はシフト開始時間を使用
-    if (clockIn < startTime) {
-      clockIn = startTime;
-    }
+    const clockIn = record.clock_in
+      ? roundDownToNearest15Minutes(new Date(`1970-01-01T${record.clock_in}`))
+      : null;
+    const clockOut = record.clock_out
+      ? roundDownToNearest15Minutes(new Date(`1970-01-01T${record.clock_out}`))
+      : null;
 
-    // 遅刻を判定し、15分刻みで調整
-    if (clockIn > startTime) {
-      const diffMinutes =
-        Math.ceil(
-          (clockIn.getTime() - startTime.getTime()) / (15 * 60 * 1000)
-        ) * 15;
-      clockIn = new Date(startTime.getTime() + diffMinutes * 60 * 1000);
-    }
+    if (clockIn && clockIn > shiftStart) shiftStart = clockIn;
+    if (clockOut && clockOut < shiftEnd) shiftEnd = clockOut;
 
-    // 退勤打刻がシフト終了時間より遅い場合はシフト終了時間を使用
-    if (clockOut > endTime) {
-      clockOut = endTime;
-    }
+    const workedMilliseconds = shiftEnd.getTime() - shiftStart.getTime();
+    if (workedMilliseconds <= 0) return "-";
 
-    // 労働時間の計算
-    const workedHours =
-      (clockOut.getTime() - clockIn.getTime()) / (60 * 60 * 1000);
-    if (workedHours <= 0) return "-";
+    const workedMinutes = Math.floor(workedMilliseconds / (1000 * 60));
+    const workedHours = workedMinutes / 60;
 
-    // 日給を計算
-    const dailyPay = workedHours * hourlyRate;
-    return `${Math.floor(dailyPay)}円`;
+    return `${Math.floor(workedHours * hourlyRate)}円`;
   };
-
-  const exportToExcel = () => {
-    if (!attendanceAndShiftData.length || !selectedStaffId) {
-      alert("エクスポートするデータがありません。");
-      return;
-    }
-
-    const workbook = XLSX.utils.book_new();
-    const sheetData = [];
-
-    sheetData.push([`スタッフ名: ${selectedStaffName}`]);
-    sheetData.push([`取得年月: ${selectedMonth}`]);
-    sheetData.push([]);
-    sheetData.push([
-      "日付",
-      "シフト開始",
-      "シフト終了",
-      "勤務地",
-      "時給",
-      "出勤打刻",
-      "退勤打刻",
-      "日給",
-    ]);
-
-    attendanceAndShiftData.forEach((record: any) => {
-      const shift = record.shifts || {};
-      const workData = shift.work_data || {};
-
-      sheetData.push([
-        record.work_date || "-",
-        shift.start_time || "-",
-        shift.end_time || "-",
-        workData.work_location || "-",
-        shift.hourly_rate || "-",
-        formatToJapanTime(record.clock_in) || "-",
-        formatToJapanTime(record.clock_out) || "-",
-        calculateDailyPay(record),
-      ]);
-    });
-
-    const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
-    XLSX.utils.book_append_sheet(workbook, worksheet, "勤務履歴");
-
-    const fileName = `${selectedStaffName}-${selectedMonth.replace(
-      "-",
-      ""
-    )}-勤務履歴.xlsx`;
-    XLSX.writeFile(workbook, fileName);
-  };
-
-  const days = generateCalendarDays(selectedMonth);
 
   useEffect(() => {
     fetchStaffList();
@@ -213,10 +212,22 @@ export default function AttendanceRecords({
         <h1 className="text-2xl font-bold mb-6">打刻履歴と勤務データ</h1>
         {error && <p className="text-red-500 mb-4">{error}</p>}
 
+        <div className="mb-6 text-gray-600">
+          <h2 className="font-bold">日給計算について</h2>
+          <p className="text-sm">日給は以下のルールで計算されます：</p>
+          <ul className="list-disc pl-5 text-sm">
+            <li>
+              出勤・退勤打刻の時間からシフト時間を基準に勤務時間を計算します。
+            </li>
+            <li>勤務時間は15分単位で計算され、切り捨てられます。</li>
+            <li>勤務時間 × 時給 = 日給</li>
+          </ul>
+        </div>
+
         <div className="mb-6">
           <label className="block font-bold mb-2">スタッフを選択</label>
           <select
-            onChange={(e) => handleStaffSelection(e.target.value)}
+            onChange={(e) => setSelectedStaffId(e.target.value)}
             value={selectedStaffId || ""}
             className="border px-4 py-2 w-full sm:w-auto"
           >
@@ -241,13 +252,6 @@ export default function AttendanceRecords({
           />
         </div>
 
-        <button
-          onClick={exportToExcel}
-          className="mb-6 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-        >
-          Excelにエクスポート
-        </button>
-
         {selectedStaffId && (
           <table className="w-full bg-white border-collapse border border-gray-300">
             <thead>
@@ -259,50 +263,75 @@ export default function AttendanceRecords({
                 <th className="border border-gray-300 px-4 py-2">時給</th>
                 <th className="border border-gray-300 px-4 py-2">出勤打刻</th>
                 <th className="border border-gray-300 px-4 py-2">退勤打刻</th>
+                <th className="border border-gray-300 px-4 py-2">ステータス</th>
+                <th className="border border-gray-300 px-4 py-2">遅刻時間</th>
                 <th className="border border-gray-300 px-4 py-2">日給</th>
+                <th className="border border-gray-300 px-4 py-2">操作</th>
               </tr>
             </thead>
             <tbody>
-              {days.map((day) => {
-                const date = `${selectedMonth}-${String(day).padStart(2, "0")}`;
+              {generateDatesForMonth(selectedMonth).map((date) => {
                 const record =
                   attendanceAndShiftData.find(
                     (item) => item.work_date === date
                   ) || {};
+                const { status, lateTime } = calculateStatus(record);
                 const shift = record.shifts || {};
                 const workData = shift.work_data || {};
 
-                const isAttendanceMissing =
-                  shift.start_time && (!record.clock_in || !record.clock_out);
-
                 return (
                   <tr
-                    key={day}
-                    className={isAttendanceMissing ? "bg-red-100" : ""}
+                    key={date}
+                    className={record.status === "欠勤" ? "bg-gray-200" : ""}
                   >
-                    <td className="border border-gray-300 px-4 py-2 text-center">
-                      {date}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
+                    <td className="border px-4 py-2">{date}</td>
+                    <td className="border px-4 py-2">
                       {shift.start_time || "-"}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
+                    <td className="border px-4 py-2">
                       {shift.end_time || "-"}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
+                    <td className="border px-4 py-2">
                       {workData.work_location || "-"}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
-                      {shift.hourly_rate || "-"}
+                    <td className="border px-4 py-2">
+                      {shift.hourly_rate ? `${shift.hourly_rate}円` : "-"}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
-                      {formatToJapanTime(record.clock_in) || "-"}
+                    <td className="border px-4 py-2">
+                      {record.clock_in
+                        ? formatToJapanTime(record.clock_in)
+                        : "-"}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
-                      {formatToJapanTime(record.clock_out) || "-"}
+                    <td className="border px-4 py-2">
+                      {record.clock_out
+                        ? formatToJapanTime(record.clock_out)
+                        : "-"}
                     </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
+                    <td className="border px-4 py-2">{status || "-"}</td>
+                    <td className="border px-4 py-2">{lateTime || "-"}</td>
+                    <td className="border px-4 py-2">
                       {calculateDailyPay(record)}
+                    </td>
+                    <td className="border px-4 py-2 text-center">
+                      {record.shifts ? (
+                        record.status === "欠勤" ? (
+                          <button
+                            onClick={() => cancelAbsent(record.id)}
+                            className="bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600"
+                          >
+                            欠勤取消
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => markAsAbsent(record.id)}
+                            className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
+                          >
+                            欠勤
+                          </button>
+                        )
+                      ) : (
+                        "-"
+                      )}
                     </td>
                   </tr>
                 );
