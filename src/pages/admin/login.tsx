@@ -48,7 +48,7 @@ export default function AdminLogin() {
     <div className="flex items-center justify-center h-screen bg-gray-100">
       <div className="w-full max-w-sm p-6 bg-white rounded shadow-md">
         <h1 className="text-2xl font-bold text-center mb-4">管理者ログイン</h1>
-        <h5 className=" text-center">※レイアウトの関係からPC上での利用推奨</h5>
+        <h5 className=" text-center">※レイアウトの関係からPCでの利用推奨</h5>
         <h5 className=" text-center">（鋭意修正中...）</h5>
         <br></br>
         <div className="mb-4">
