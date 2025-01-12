@@ -1,5 +1,3 @@
-// src/pages/admin/attendanceStatus.tsx
-
 import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabaseCliants";
 import AdminLayout from "../../components/AdminLayout";
@@ -32,8 +30,22 @@ export default function AttendanceStatus({
   const [error, setError] = useState<string>("");
   const { setLateCount } = useLateCount(); // コンテキストの遅刻件数を更新
 
-  const today = new Date();
-  const todayDate = today.toISOString().split("T")[0];
+  // 日本時間の今日の日付を正確に取得
+  const getJapanDate = () => {
+    const formatter = new Intl.DateTimeFormat("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const parts = formatter.formatToParts(new Date());
+    const year = parts.find((part) => part.type === "year")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    const day = parts.find((part) => part.type === "day")?.value;
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayDate = getJapanDate();
 
   const fetchTodayLateComers = async () => {
     try {
@@ -54,7 +66,7 @@ export default function AttendanceStatus({
           )
         `
         )
-        .eq("work_date", todayDate)
+        .eq("work_date", todayDate) // 日本時間の今日の日付
         .order("clock_in", { ascending: true });
 
       if (error) {
@@ -76,13 +88,14 @@ export default function AttendanceStatus({
         })
       );
 
+      // 遅刻者のみを絞り込み
       const lateComersData = formattedData.filter((record) => {
         const shiftStart = record.shifts?.start_time
-          ? new Date(`1970-01-01T${record.shifts.start_time}`)
-          : null;
+          ? new Date(`1970-01-01T${record.shifts.start_time}Z`)
+          : null; // UTCベースのシフト開始時刻
         const clockIn = record.clock_in
-          ? new Date(`1970-01-01T${record.clock_in}`)
-          : null;
+          ? new Date(`1970-01-01T${record.clock_in}Z`)
+          : null; // UTCベースの打刻時刻
 
         return clockIn && shiftStart && clockIn > shiftStart;
       });
@@ -191,10 +204,10 @@ export default function AttendanceStatus({
             <tbody>
               {lateComers.map((record) => {
                 const shiftStart = record.shifts.start_time
-                  ? new Date(`1970-01-01T${record.shifts.start_time}`)
+                  ? new Date(`1970-01-01T${record.shifts.start_time}Z`)
                   : null;
                 const clockIn = record.clock_in
-                  ? new Date(`1970-01-01T${record.clock_in}`)
+                  ? new Date(`1970-01-01T${record.clock_in}Z`)
                   : null;
                 const lateMinutes =
                   shiftStart && clockIn
