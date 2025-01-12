@@ -341,16 +341,18 @@ export default function AttendanceRecords({
         {error && <p className="text-red-500 mb-4">{error}</p>}
 
         <div className="mb-6 text-gray-600">
-          <h2 className="font-bold">日給計算について</h2>
-          <p className="text-sm">日給は以下のルールで計算されます：</p>
-          <ul className="list-disc pl-5 text-sm">
+          <h2 className="font-bold text-sm md:text-base">日給計算について</h2>
+          <p className="text-xs md:text-sm">
+            日給は以下のルールで計算されます：
+          </p>
+          <ul className="list-disc pl-5 text-xs md:text-sm">
             <li>出勤・退勤打刻の時間から勤務時間を計算します。</li>
             <li>勤務時間はシフト時間を基準に15分単位で切り捨てされます。</li>
             <li>勤務時間 × 時給 = 日給</li>
           </ul>
-          <br></br>
-          <h2 className="font-bold">欠勤登録について</h2>
-          <ul className="list-disc pl-5 text-sm">
+          <br />
+          <h2 className="font-bold text-sm md:text-base">欠勤登録について</h2>
+          <ul className="list-disc pl-5 text-xs md:text-sm">
             <li>
               欠勤ボタンを押下するには先に欠勤理由を入力してください（例：病欠 ,
               無断欠勤...）
@@ -359,11 +361,13 @@ export default function AttendanceRecords({
         </div>
 
         <div className="mb-6">
-          <label className="block font-bold mb-2">スタッフを選択</label>
+          <label className="block font-bold text-sm md:text-base mb-2">
+            スタッフを選択
+          </label>
           <select
             onChange={(e) => setSelectedStaffId(e.target.value)}
             value={selectedStaffId || ""}
-            className="border px-4 py-2 w-full sm:w-auto"
+            className="border px-2 py-1 w-full sm:w-auto text-sm md:text-base"
           >
             <option value="" disabled>
               スタッフを選択してください
@@ -377,120 +381,131 @@ export default function AttendanceRecords({
         </div>
 
         <div className="mb-6">
-          <label className="block font-bold mb-2">月を選択</label>
+          <label className="block font-bold text-sm md:text-base mb-2">
+            月を選択
+          </label>
           <input
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="border px-4 py-2 w-full sm:w-auto"
+            className="border px-2 py-1 w-full sm:w-auto text-sm md:text-base"
           />
         </div>
 
         <button
           onClick={exportToExcel}
-          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 mb-4"
+          className="bg-green-500 text-white px-2 py-1 rounded text-sm md:text-base hover:bg-green-600 mb-4"
         >
           Excel 出力
         </button>
-        {selectedStaffId && (
-          <table className="w-full bg-white border-collapse border border-gray-300">
-            <thead>
-              <tr>
-                <th className="border border-gray-300 px-4 py-2">日付</th>
-                <th className="border border-gray-300 px-4 py-2">シフト開始</th>
-                <th className="border border-gray-300 px-4 py-2">シフト終了</th>
-                <th className="border border-gray-300 px-4 py-2">勤務地</th>
-                <th className="border border-gray-300 px-4 py-2">時給</th>
-                <th className="border border-gray-300 px-4 py-2">出勤打刻</th>
-                <th className="border border-gray-300 px-4 py-2">退勤打刻</th>
-                <th className="border border-gray-300 px-4 py-2">ステータス</th>
-                <th className="border border-gray-300 px-4 py-2">日給</th>
-                <th className="border border-gray-300 px-4 py-2">欠勤理由</th>
-                <th className="border border-gray-300 px-4 py-2">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {generateDatesForMonth(selectedMonth).map((date) => {
-                const record =
-                  attendanceAndShiftData.find((item) => item.date === date) ||
-                  {};
-                const shift = record || {};
-                const attendance = record.attendance_records || {};
-                const workData = shift.work_data || {};
-                const status = determineStatus(record);
-                const isAbsent = status === "欠勤";
 
-                return (
-                  <tr key={date} className={isAbsent ? "bg-gray-200" : ""}>
-                    <td className="border px-4 py-2">{date}</td>
-                    <td className="border px-4 py-2">
-                      {shift.start_time || "-"}
-                    </td>
-                    <td className="border px-4 py-2">
-                      {shift.end_time || "-"}
-                    </td>
-                    <td className="border px-4 py-2">
-                      {workData.work_location || "-"}
-                    </td>
-                    <td className="border px-4 py-2">
-                      {shift.hourly_rate ? `${shift.hourly_rate}円` : "-"}
-                    </td>
-                    <td className="border px-4 py-2">
-                      {attendance.clock_in
-                        ? formatToJapanTime(attendance.clock_in)
-                        : "-"}
-                    </td>
-                    <td className="border px-4 py-2">
-                      {attendance.clock_out
-                        ? formatToJapanTime(attendance.clock_out)
-                        : "-"}
-                    </td>
-                    <td className="border px-4 py-2">{status}</td>
-                    <td className="border px-4 py-2">
-                      {calculateDailyPay(record)}
-                    </td>
-                    <td className="border px-4 py-2">
-                      {attendance.absent_reason || (
-                        <input
-                          type="text"
-                          placeholder="欠勤理由を入力"
-                          value={absentReasons[date] || ""}
-                          onChange={(e) =>
-                            handleReasonChange(date, e.target.value)
-                          }
-                          className="border px-2 py-1"
-                        />
-                      )}
-                    </td>
-                    <td className="border px-4 py-2 text-center">
-                      {!isAbsent ? (
-                        <button
-                          onClick={() =>
-                            markAsAbsent(date, absentReasons[date] || "")
-                          }
-                          className={`bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 ${
-                            !absentReasons[date]
-                              ? "opacity-50 cursor-not-allowed"
-                              : ""
-                          }`}
-                          disabled={!absentReasons[date]}
-                        >
-                          欠勤
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => cancelAbsent(date)}
-                          className="bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600"
-                        >
-                          欠勤取消
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        {selectedStaffId && (
+          <div className="overflow-x-auto">
+            <table className="w-full bg-white border-collapse border border-gray-300 text-xs md:text-sm">
+              <thead>
+                <tr>
+                  <th className="border border-gray-300 px-2 py-1">日付</th>
+                  <th className="border border-gray-300 px-2 py-1">
+                    シフト開始
+                  </th>
+                  <th className="border border-gray-300 px-2 py-1">
+                    シフト終了
+                  </th>
+                  <th className="border border-gray-300 px-2 py-1">勤務地</th>
+                  <th className="border border-gray-300 px-2 py-1">時給</th>
+                  <th className="border border-gray-300 px-2 py-1">出勤打刻</th>
+                  <th className="border border-gray-300 px-2 py-1">退勤打刻</th>
+                  <th className="border border-gray-300 px-2 py-1">
+                    ステータス
+                  </th>
+                  <th className="border border-gray-300 px-2 py-1">日給</th>
+                  <th className="border border-gray-300 px-2 py-1">欠勤理由</th>
+                  <th className="border border-gray-300 px-2 py-1">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {generateDatesForMonth(selectedMonth).map((date) => {
+                  const record =
+                    attendanceAndShiftData.find((item) => item.date === date) ||
+                    {};
+                  const shift = record || {};
+                  const attendance = record.attendance_records || {};
+                  const workData = shift.work_data || {};
+                  const status = determineStatus(record);
+                  const isAbsent = status === "欠勤";
+
+                  return (
+                    <tr key={date} className={isAbsent ? "bg-gray-200" : ""}>
+                      <td className="border px-2 py-1">{date}</td>
+                      <td className="border px-2 py-1">
+                        {shift.start_time || "-"}
+                      </td>
+                      <td className="border px-2 py-1">
+                        {shift.end_time || "-"}
+                      </td>
+                      <td className="border px-2 py-1">
+                        {workData.work_location || "-"}
+                      </td>
+                      <td className="border px-2 py-1">
+                        {shift.hourly_rate ? `${shift.hourly_rate}円` : "-"}
+                      </td>
+                      <td className="border px-2 py-1">
+                        {attendance.clock_in
+                          ? formatToJapanTime(attendance.clock_in)
+                          : "-"}
+                      </td>
+                      <td className="border px-2 py-1">
+                        {attendance.clock_out
+                          ? formatToJapanTime(attendance.clock_out)
+                          : "-"}
+                      </td>
+                      <td className="border px-2 py-1">{status}</td>
+                      <td className="border px-2 py-1">
+                        {calculateDailyPay(record)}
+                      </td>
+                      <td className="border px-2 py-1">
+                        {attendance.absent_reason || (
+                          <input
+                            type="text"
+                            placeholder="欠勤理由を入力"
+                            value={absentReasons[date] || ""}
+                            onChange={(e) =>
+                              handleReasonChange(date, e.target.value)
+                            }
+                            className="border px-2 py-1"
+                          />
+                        )}
+                      </td>
+                      <td className="border px-2 py-1 text-center">
+                        {!isAbsent ? (
+                          <button
+                            onClick={() =>
+                              markAsAbsent(date, absentReasons[date] || "")
+                            }
+                            className={`bg-red-500 text-white px-2 py-1 rounded text-xs md:text-sm hover:bg-red-600 ${
+                              !absentReasons[date]
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
+                            disabled={!absentReasons[date]}
+                          >
+                            欠勤
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => cancelAbsent(date)}
+                            className="bg-green-500 text-white px-2 py-1 rounded text-xs md:text-sm hover:bg-green-600"
+                          >
+                            欠勤取消
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </AdminLayout>
