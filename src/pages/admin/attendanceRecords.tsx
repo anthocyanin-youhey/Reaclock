@@ -183,20 +183,30 @@ export default function AttendanceRecords({
       ? new Date(`1970-01-01T${attendance.clock_in}`)
       : null;
 
+    // シフトが未登録の場合
+    if (!shiftStartTime && !record.end_time) {
+      return "-";
+    }
+
+    // 欠勤の場合
     if (attendance.status === "欠勤") {
       return "欠勤";
     }
 
+    // 出勤打刻がない場合
     if (!clockInTime) {
       return "未出勤";
     }
 
+    // 遅刻の場合
     if (shiftStartTime && clockInTime > shiftStartTime) {
       return "遅刻";
     }
 
+    // 出勤済みの場合
     return "出勤";
   };
+
   const calculateDailyPay = (record: any): string => {
     const attendance = record.attendance_records || {};
     const shiftStart = record.start_time
@@ -337,6 +347,14 @@ export default function AttendanceRecords({
             <li>出勤・退勤打刻の時間から勤務時間を計算します。</li>
             <li>勤務時間はシフト時間を基準に15分単位で切り捨てされます。</li>
             <li>勤務時間 × 時給 = 日給</li>
+          </ul>
+          <br></br>
+          <h2 className="font-bold">欠勤登録について</h2>
+          <ul className="list-disc pl-5 text-sm">
+            <li>
+              欠勤ボタンを押下するには先に欠勤理由を入力してください（例：病欠 ,
+              無断欠勤...）
+            </li>
           </ul>
         </div>
 
