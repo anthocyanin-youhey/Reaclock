@@ -92,7 +92,7 @@ export default function AdminLayout({
             </Link>
             <Link href="/admin/attendanceStatus">
               <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer flex items-center">
-                出欠/遅刻管理
+                遅刻チェック
                 {lateCount > 0 && (
                   <span className="ml-2 text-yellow-500 font-bold">
                     ⚠ 未対応{lateCount}件
