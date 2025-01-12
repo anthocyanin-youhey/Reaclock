@@ -3,6 +3,7 @@ import { supabase } from "../../utils/supabaseCliants";
 import AdminLayout from "../../components/AdminLayout";
 import { requireAdminAuth } from "../../utils/authHelpers";
 import { formatToJapanTime } from "../../utils/dateHelpers";
+import * as XLSX from "xlsx"; // Excel出力用
 
 export const getServerSideProps = requireAdminAuth;
 
@@ -36,7 +37,6 @@ export default function AttendanceRecords({
       return `${month}-${day}`;
     });
   };
-
   const fetchStaffList = async () => {
     try {
       const { data, error } = await supabase
@@ -48,6 +48,7 @@ export default function AttendanceRecords({
         setError("スタッフ情報の取得に失敗しました。");
         console.error("スタッフ情報取得エラー:", error);
       } else {
+        console.log("取得したスタッフリスト:", data); // デバッグ用
         setStaffList(data || []);
       }
     } catch (err) {
@@ -100,7 +101,6 @@ export default function AttendanceRecords({
       setError("データ取得中にエラーが発生しました。");
     }
   };
-
   const markAsAbsent = async (date: string, reason: string) => {
     try {
       const { data: existingRecord, error: fetchError } = await supabase
@@ -197,7 +197,6 @@ export default function AttendanceRecords({
 
     return "出勤";
   };
-
   const calculateDailyPay = (record: any): string => {
     const attendance = record.attendance_records || {};
     const shiftStart = record.start_time
@@ -230,6 +229,85 @@ export default function AttendanceRecords({
     const workedHours = Math.floor(workedMilliseconds / (1000 * 60 * 60));
 
     return `${Math.floor(workedHours * hourlyRate)}円`;
+  };
+
+  const exportToExcel = () => {
+    if (!selectedStaffId) {
+      setError("スタッフを選択してください。");
+      return;
+    }
+
+    // 選択されたスタッフ情報を取得
+    const staff = staffList.find(
+      (s) => String(s.id) === String(selectedStaffId)
+    );
+    if (!staff) {
+      setError("スタッフ情報を取得できませんでした。");
+      console.error(
+        "スタッフ情報が見つかりません。選択されたID:",
+        selectedStaffId
+      );
+      console.error("スタッフリスト:", staffList);
+      return;
+    }
+
+    const staffName = staff.name || "スタッフ";
+
+    // 対象年月のフォーマット
+    const year = selectedMonth.split("-")[0];
+    const month = selectedMonth.split("-")[1];
+    const formattedMonth = `${year}年${month}月`;
+
+    // ファイル名を設定
+    const fileName = `${formattedMonth}-${staffName}-勤怠管理表.xlsx`;
+
+    console.log("生成されたファイル名:", fileName); // デバッグ用
+
+    const header = [
+      "日付",
+      "シフト開始",
+      "シフト終了",
+      "勤務地",
+      "時給",
+      "出勤打刻",
+      "退勤打刻",
+      "ステータス",
+      "日給",
+      "欠勤理由",
+    ];
+
+    // 全日分のデータ生成
+    const dates = generateDatesForMonth(selectedMonth);
+    const data = dates.map((date) => {
+      const record =
+        attendanceAndShiftData.find((item) => item.date === date) || {};
+      const attendance = record.attendance_records || {};
+      return [
+        date, // 日付
+        record.start_time || "-", // シフト開始
+        record.end_time || "-", // シフト終了
+        record.work_data?.work_location || "-", // 勤務地
+        record.hourly_rate ? `${record.hourly_rate}円` : "-", // 時給
+        attendance.clock_in ? formatToJapanTime(attendance.clock_in) : "-", // 出勤打刻
+        attendance.clock_out ? formatToJapanTime(attendance.clock_out) : "-", // 退勤打刻
+        determineStatus(record), // ステータス
+        calculateDailyPay(record), // 日給
+        attendance.absent_reason || "-", // 欠勤理由
+      ];
+    });
+
+    // シート作成
+    const worksheet = XLSX.utils.aoa_to_sheet([header, ...data]);
+
+    // 列幅調整
+    worksheet["!cols"] = header.map(() => ({ wch: 15 }));
+
+    // ワークブック作成
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "勤怠データ");
+
+    // ファイル出力
+    XLSX.writeFile(workbook, fileName);
   };
 
   useEffect(() => {
@@ -290,6 +368,12 @@ export default function AttendanceRecords({
           />
         </div>
 
+        <button
+          onClick={exportToExcel}
+          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 mb-4"
+        >
+          Excel 出力
+        </button>
         {selectedStaffId && (
           <table className="w-full bg-white border-collapse border border-gray-300">
             <thead>
