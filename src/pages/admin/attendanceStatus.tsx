@@ -167,7 +167,7 @@ export default function AttendanceStatus({
   return (
     <AdminLayout adminName={admin.name}>
       <div className="container mx-auto py-6">
-        <h1 className="text-2xl font-bold mb-6">出勤ステータス確認</h1>
+        <h1 className="text-2xl font-bold mb-6">出欠/遅刻ステータス確認</h1>
         {error && <p className="text-red-500">{error}</p>}
 
         <div className="text-center mb-8">
