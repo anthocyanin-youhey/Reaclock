@@ -71,6 +71,7 @@ export default function AttendanceRecords({
             work_location
           ),
           attendance_records!left (
+            id, 
             clock_in,
             clock_out,
             status,
@@ -94,6 +95,7 @@ export default function AttendanceRecords({
         setError("データの取得に失敗しました。");
         console.error("データ取得エラー:", error);
       } else {
+        console.log("取得したデータ: ", data); // デバッグ用
         setAttendanceAndShiftData(data || []);
       }
     } catch (err) {
@@ -101,6 +103,7 @@ export default function AttendanceRecords({
       setError("データ取得中にエラーが発生しました。");
     }
   };
+
   const markAsAbsent = async (date: string, reason: string) => {
     try {
       const { data: existingRecord, error: fetchError } = await supabase
@@ -147,6 +150,7 @@ export default function AttendanceRecords({
         }
       }
 
+      console.log("欠勤登録成功: ", { date, reason }); // デバッグ用
       fetchAttendanceAndShiftData(selectedStaffId!);
     } catch (err) {
       console.error("欠勤登録エラー:", err);
@@ -177,11 +181,12 @@ export default function AttendanceRecords({
   const determineStatus = (record: any): string => {
     const attendance = record.attendance_records || {};
     const shiftStartTime = record.start_time
-      ? new Date(`1970-01-01T${record.start_time}`)
+      ? new Date(`${record.date}T${record.start_time}`)
       : null;
     const clockInTime = attendance.clock_in
-      ? new Date(`1970-01-01T${attendance.clock_in}`)
+      ? new Date(`${record.date}T${attendance.clock_in}`)
       : null;
+    const now = new Date();
 
     // シフトが未登録の場合
     if (!shiftStartTime && !record.end_time) {
@@ -193,18 +198,23 @@ export default function AttendanceRecords({
       return "欠勤";
     }
 
-    // 出勤打刻がない場合
-    if (!clockInTime) {
-      return "未出勤";
+    // 出勤打刻がない場合でシフト開始時間を過ぎている場合
+    if (!clockInTime && shiftStartTime && now > shiftStartTime) {
+      return "遅刻";
     }
 
-    // 遅刻の場合
-    if (shiftStartTime && clockInTime > shiftStartTime) {
+    // 出勤打刻があるが遅刻している場合
+    if (clockInTime && shiftStartTime && clockInTime > shiftStartTime) {
       return "遅刻";
     }
 
     // 出勤済みの場合
-    return "出勤";
+    if (clockInTime) {
+      return "出勤";
+    }
+
+    // 未出勤の場合
+    return "未出勤";
   };
 
   const calculateDailyPay = (record: any): string => {
@@ -332,6 +342,18 @@ export default function AttendanceRecords({
 
   const handleReasonChange = (date: string, value: string) => {
     setAbsentReasons((prev) => ({ ...prev, [date]: value }));
+  };
+
+  const markAsAbsentAndClearReason = async (date: string) => {
+    const reason = absentReasons[date];
+    if (!reason) {
+      alert("欠勤理由を入力してください。");
+      return;
+    }
+
+    await markAsAbsent(date, reason);
+
+    setAbsentReasons((prev) => ({ ...prev, [date]: "" })); // 入力欄をクリア
   };
 
   return (
@@ -464,24 +486,26 @@ export default function AttendanceRecords({
                         {calculateDailyPay(record)}
                       </td>
                       <td className="border px-2 py-1">
-                        {attendance.absent_reason || (
-                          <input
-                            type="text"
-                            placeholder="欠勤理由を入力"
-                            value={absentReasons[date] || ""}
-                            onChange={(e) =>
-                              handleReasonChange(date, e.target.value)
-                            }
-                            className="border px-2 py-1"
-                          />
+                        {shift.start_time || shift.end_time ? (
+                          attendance.absent_reason || (
+                            <input
+                              type="text"
+                              placeholder="欠勤理由を入力"
+                              value={absentReasons[date] || ""}
+                              onChange={(e) =>
+                                handleReasonChange(date, e.target.value)
+                              }
+                              className="border px-2 py-1"
+                            />
+                          )
+                        ) : (
+                          <span>-</span>
                         )}
                       </td>
                       <td className="border px-2 py-1 text-center">
                         {!isAbsent ? (
                           <button
-                            onClick={() =>
-                              markAsAbsent(date, absentReasons[date] || "")
-                            }
+                            onClick={() => markAsAbsentAndClearReason(date)}
                             className={`bg-red-500 text-white px-2 py-1 rounded text-xs md:text-sm hover:bg-red-600 ${
                               !absentReasons[date]
                                 ? "opacity-50 cursor-not-allowed"

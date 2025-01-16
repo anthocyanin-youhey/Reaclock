@@ -14,6 +14,7 @@ export default function AttendancePage({
   user: { id: string; name: string };
 }) {
   const [records, setRecords] = useState<Record<string, any>>({});
+  const [shifts, setShifts] = useState<Record<string, any>>({});
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedMonth, setSelectedMonth] = useState<string>(
     new Date().toISOString().slice(0, 7)
@@ -36,9 +37,9 @@ export default function AttendancePage({
   }, [selectedMonth]);
 
   useEffect(() => {
-    const fetchAttendanceRecords = async () => {
+    const fetchAttendanceAndShiftRecords = async () => {
       try {
-        const { data, error } = await supabase
+        const { data: attendanceData, error: attendanceError } = await supabase
           .from("attendance_records")
           .select("work_date, clock_in, clock_out")
           .eq("user_id", user.id)
@@ -53,70 +54,83 @@ export default function AttendancePage({
           )
           .order("work_date", { ascending: true });
 
-        if (error) {
-          console.error("データ取得エラー:", error);
+        if (attendanceError) {
+          console.error("打刻データ取得エラー:", attendanceError);
           setErrorMessage("データ取得に失敗しました。");
           return;
         }
 
-        const recordsMap = (data || []).reduce((acc, record) => {
+        const attendanceMap = (attendanceData || []).reduce((acc, record) => {
           acc[record.work_date] = record;
           return acc;
         }, {} as Record<string, any>);
 
+        const { data: shiftData, error: shiftError } = await supabase
+          .from("shifts")
+          .select("date, start_time, end_time, hourly_rate")
+          .eq("user_id", user.id)
+          .gte("date", `${selectedMonth}-01`)
+          .lte(
+            "date",
+            `${selectedMonth}-${new Date(
+              Number(selectedMonth.split("-")[0]),
+              Number(selectedMonth.split("-")[1]),
+              0
+            ).getDate()}`
+          )
+          .order("date", { ascending: true });
+
+        if (shiftError) {
+          console.error("シフトデータ取得エラー:", shiftError);
+          setErrorMessage("データ取得に失敗しました。");
+          return;
+        }
+
+        const shiftMap = (shiftData || []).reduce((acc, record) => {
+          acc[record.date] = record;
+          return acc;
+        }, {} as Record<string, any>);
+
         setErrorMessage("");
-        setRecords(recordsMap);
+        setRecords(attendanceMap);
+        setShifts(shiftMap);
       } catch (error) {
         console.error("サーバーエラー:", error);
         setErrorMessage("サーバーエラーが発生しました。");
       }
     };
 
-    fetchAttendanceRecords();
+    fetchAttendanceAndShiftRecords();
   }, [selectedMonth, user.id]);
+
+  // 出勤ステータスを決定するヘルパー関数
+  const getStatus = (record: any): string => {
+    if (record?.clock_in && !record?.clock_out) return "出勤中";
+    if (record?.clock_out) return "退勤済み";
+    return "未出勤";
+  };
 
   // Excel出力機能
   const exportToExcel = () => {
     const exportData = daysInMonth.map((date) => {
       const record = records[date];
+      const shift = shifts[date];
       return {
         日付: date,
         出勤時刻: record?.clock_in ? formatToJapanTime(record.clock_in) : "-",
         退勤時刻: record?.clock_out ? formatToJapanTime(record.clock_out) : "-",
+        シフト開始時間: shift?.start_time || "-",
+        シフト終了時間: shift?.end_time || "-",
+        時給単価: shift?.hourly_rate ? `${shift.hourly_rate}円` : "-",
+        出勤ステータス: getStatus(record),
       };
     });
 
-    // ヘッダー行
-    const headerData = [
-      {
-        日付: `対象スタッフ: ${user.name}`,
-        出勤時刻: `対象年月: ${selectedMonth}`,
-      },
-    ];
-
-    // 列見出し
-    const columnHeaders = [
-      { 日付: "日付", 出勤時刻: "出勤時刻", 退勤時刻: "退勤時刻" },
-    ];
-
-    // データを結合
-    const fullData = [...headerData, ...columnHeaders, ...exportData];
-
-    // ワークシート作成
-    const worksheet = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
-
-    // ワークブック作成
     const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+
     XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance Records");
-
-    // ファイル名を生成
-    const fileName = `打刻履歴-${user.name}-${selectedMonth.replace(
-      "-",
-      ""
-    )}.xlsx`;
-
-    // ファイルをダウンロード
-    XLSX.writeFile(workbook, fileName);
+    XLSX.writeFile(workbook, `打刻履歴-${user.name}-${selectedMonth}.xlsx`);
   };
 
   return (
@@ -153,12 +167,22 @@ export default function AttendancePage({
                 <th className="border border-gray-300 px-4 py-2">日付</th>
                 <th className="border border-gray-300 px-4 py-2">出勤時刻</th>
                 <th className="border border-gray-300 px-4 py-2">退勤時刻</th>
+                <th className="border border-gray-300 px-4 py-2">
+                  シフト開始時間
+                </th>
+                <th className="border border-gray-300 px-4 py-2">
+                  シフト終了時間
+                </th>
+                <th className="border border-gray-300 px-4 py-2">時給単価</th>
+                <th className="border border-gray-300 px-4 py-2">
+                  出勤ステータス
+                </th>
               </tr>
             </thead>
             <tbody>
               {daysInMonth.map((date) => {
                 const record = records[date];
-
+                const shift = shifts[date];
                 return (
                   <tr key={date}>
                     <td className="border border-gray-300 px-4 py-2 text-center">
@@ -173,6 +197,18 @@ export default function AttendancePage({
                       {record?.clock_out
                         ? formatToJapanTime(record.clock_out)
                         : "-"}
+                    </td>
+                    <td className="border border-gray-300 px-4 py-2 text-center">
+                      {shift?.start_time || "-"}
+                    </td>
+                    <td className="border border-gray-300 px-4 py-2 text-center">
+                      {shift?.end_time || "-"}
+                    </td>
+                    <td className="border border-gray-300 px-4 py-2 text-center">
+                      {shift?.hourly_rate ? `${shift.hourly_rate}円` : "-"}
+                    </td>
+                    <td className="border border-gray-300 px-4 py-2 text-center">
+                      {getStatus(record)}
                     </td>
                   </tr>
                 );

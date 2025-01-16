@@ -69,7 +69,7 @@ export default function StaffAttendance({
             clock_out_minute: record.clock_out
               ? record.clock_out.split(":")[1]
               : "--",
-            hasChanges: false,
+            hasChanges: false, // 初期状態では変更なし
           }))
         );
       }
@@ -87,73 +87,81 @@ export default function StaffAttendance({
       clock_in_minute,
       clock_out_hour,
       clock_out_minute,
+      work_date, // 勤務日を取得
     } = record;
 
-    const clock_in = `${clock_in_hour}:${clock_in_minute}`;
-    const clock_out = `${clock_out_hour}:${clock_out_minute}`;
+    // 時刻が未入力の場合に null を設定
+    const clock_in =
+      clock_in_hour === "--" || clock_in_minute === "--"
+        ? null
+        : `${clock_in_hour}:${clock_in_minute}:00`;
+    const clock_out =
+      clock_out_hour === "--" || clock_out_minute === "--"
+        ? null
+        : `${clock_out_hour}:${clock_out_minute}:00`;
 
     try {
-      // 現在のレコードを取得
+      // レコードが既存かどうか確認
       const { data: existingRecord, error: fetchError } = await supabase
         .from("attendance_records")
-        .select("clock_in, clock_out, user_id")
-        .eq("id", recordId)
-        .single();
+        .select("*")
+        .eq("user_id", id)
+        .eq("work_date", work_date)
+        .single(); // `user_id`と`work_date`で一意にチェック
 
-      if (fetchError) {
-        alert("現在のレコード取得に失敗しました。");
-        console.error(fetchError);
-        return;
-      }
+      // 新規登録かどうかを判定
+      const isNewRecord = !existingRecord;
 
-      // レコードを更新
-      const { error: updateError } = await supabase
+      // レコードを更新または挿入
+      const { error: upsertError } = await supabase
         .from("attendance_records")
-        .update({ clock_in, clock_out })
-        .eq("id", recordId);
+        .upsert(
+          {
+            id: isNewRecord ? undefined : existingRecord.id, // 既存の場合はIDを指定
+            user_id: id, // ユーザーID
+            work_date, // 勤務日
+            clock_in,
+            clock_out,
+          },
+          { onConflict: "user_id, work_date" } // ユーザーIDと勤務日で競合チェック
+        );
 
-      if (updateError) {
-        alert("レコード更新に失敗しました。");
-        console.error(updateError);
+      if (upsertError) {
+        alert("レコード保存に失敗しました。");
+        console.error("アップサートエラー:", upsertError);
         return;
       }
 
-      // 変更ログ番号の取得
-      const { count: logCount, error: logCountError } = await supabase
-        .from("attendance_change_logs")
-        .select("id", { count: "exact" })
-        .eq("attendance_id", recordId);
+      // 変更ログを保存
+      const changeNumber =
+        (
+          await supabase
+            .from("attendance_change_logs")
+            .select("id", { count: "exact" })
+            .eq("attendance_id", isNewRecord ? undefined : existingRecord.id)
+        )?.count + 1 || 1;
 
-      if (logCountError) {
-        console.error("ログ番号取得エラー:", logCountError);
-      }
-
-      const changeNumber = (logCount || 0) + 1; // 初回の場合は1
-
-      // 現在の日本時間
       const changedAt = new Date().toLocaleString("ja-JP", {
         timeZone: "Asia/Tokyo",
       });
 
-      // 変更ログの保存
       const { error: logError } = await supabase
         .from("attendance_change_logs")
         .insert({
-          attendance_id: recordId,
-          user_id: existingRecord.user_id,
-          old_clock_in: existingRecord.clock_in,
+          attendance_id: isNewRecord ? undefined : existingRecord.id,
+          user_id: id,
+          old_clock_in: isNewRecord ? null : existingRecord?.clock_in,
           new_clock_in: clock_in,
-          old_clock_out: existingRecord.clock_out,
+          old_clock_out: isNewRecord ? null : existingRecord?.clock_out,
           new_clock_out: clock_out,
-          changed_by: admin.id, // 管理者ID
-          changed_at: changedAt, // 日本時間の変更日時
-          change_number: changeNumber, // ログ番号
+          changed_by: admin.id,
+          changed_at: changedAt,
+          change_number: changeNumber,
+          change_type: isNewRecord ? "新規登録" : "変更",
         });
 
       if (logError) {
         console.error("変更ログ保存エラー:", logError);
-      } else {
-        console.log("変更ログが記録されました。");
       }
 
       alert("保存が完了しました！");
@@ -388,6 +396,9 @@ export default function StaffAttendance({
                   <li key={log.id} className="mb-2 border-b pb-2">
                     <p>
                       <strong>変更番号:</strong> {log.change_number}
+                    </p>
+                    <p>
+                      <strong>変更種別:</strong> {log.change_type || "変更"}
                     </p>
                     <p>
                       <strong>変更日時:</strong> {log.changed_at}

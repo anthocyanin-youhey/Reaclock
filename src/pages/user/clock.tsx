@@ -5,6 +5,12 @@ import { supabase } from "../../utils/supabaseCliants";
 
 export const getServerSideProps = requireUserAuth;
 
+type ShiftData = {
+  start_time: string | null;
+  end_time: string | null;
+  hourly_rate: number | null;
+};
+
 export default function ClockPage({
   user,
 }: {
@@ -13,62 +19,82 @@ export default function ClockPage({
   const [status, setStatus] = useState("");
   const [isClockInDisabled, setIsClockInDisabled] = useState(false);
   const [isClockOutDisabled, setIsClockOutDisabled] = useState(false);
-  const [currentTime, setCurrentTime] = useState<string>(""); // 現在の時間
-  const [clockInTime, setClockInTime] = useState<string>("未記録"); // 出勤時間
-  const [clockOutTime, setClockOutTime] = useState<string>("未記録"); // 退勤時間
+  const [currentTime, setCurrentTime] = useState<string>("未設定");
+  const [clockInTime, setClockInTime] = useState<string>("未記録");
+  const [clockOutTime, setClockOutTime] = useState<string>("未記録");
+  const [shiftInfo, setShiftInfo] = useState<{
+    startTime: string;
+    endTime: string;
+    hourlyRate: string;
+  }>({
+    startTime: "未設定",
+    endTime: "未設定",
+    hourlyRate: "未設定",
+  });
 
   useEffect(() => {
-    // 現在の日本時間を更新
     const timer = setInterval(() => {
       const now = new Date();
       const jstTime = new Intl.DateTimeFormat("ja-JP", {
         timeZone: "Asia/Tokyo",
         hour: "2-digit",
         minute: "2-digit",
-        second: "2-digit", // 秒を追加
+        second: "2-digit",
       }).format(now);
-      setCurrentTime(jstTime); // HH:MM:SS
+      setCurrentTime(jstTime);
     }, 1000);
-    return () => clearInterval(timer); // クリーンアップ
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
-    // 今日の打刻情報を取得
-    const fetchAttendance = async () => {
+    const fetchAttendanceAndShift = async () => {
       try {
         const now = new Date();
-        const jstDate = new Intl.DateTimeFormat("ja-JP", {
-          timeZone: "Asia/Tokyo",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        }).format(now);
+        const jstDate = now.toISOString().split("T")[0];
 
-        const currentDate = jstDate.split("/").join("-"); // YYYY-MM-DD フォーマットに変換
-
-        const { data, error } = await supabase
+        const { data: attendanceData, error: attendanceError } = await supabase
           .from("attendance_records")
           .select("clock_in, clock_out")
           .eq("user_id", user.id)
-          .eq("work_date", currentDate)
+          .eq("work_date", jstDate)
           .single();
 
-        if (error && error.code !== "PGRST116") {
-          console.error("データ取得エラー:", error);
+        if (attendanceError && attendanceError.code !== "PGRST116") {
+          console.error("出退勤情報の取得エラー:", attendanceError);
           setStatus("打刻情報の取得に失敗しました。");
-        } else if (data) {
+        } else if (attendanceData) {
           setClockInTime(
-            data.clock_in
-              ? data.clock_in.slice(0, 5) // HH:MM のみ抽出
+            attendanceData.clock_in
+              ? attendanceData.clock_in.slice(0, 5)
               : "未記録"
           );
           setClockOutTime(
-            data.clock_out
-              ? data.clock_out.slice(0, 5) // HH:MM のみ抽出
+            attendanceData.clock_out
+              ? attendanceData.clock_out.slice(0, 5)
               : "未記録"
           );
-          setIsClockInDisabled(!!data.clock_in);
-          setIsClockOutDisabled(!!data.clock_out);
+          setIsClockInDisabled(!!attendanceData.clock_in);
+          setIsClockOutDisabled(!!attendanceData.clock_out);
+        }
+
+        const { data: shiftData, error: shiftError } = await supabase
+          .from("shifts")
+          .select("start_time, end_time, hourly_rate")
+          .eq("user_id", user.id)
+          .eq("date", jstDate)
+          .single();
+
+        if (shiftError && shiftError.code !== "PGRST116") {
+          console.error("シフト情報の取得エラー:", shiftError);
+          setStatus("シフト情報の取得に失敗しました。");
+        } else if (shiftData) {
+          setShiftInfo({
+            startTime: shiftData.start_time || "未設定",
+            endTime: shiftData.end_time || "未設定",
+            hourlyRate: shiftData.hourly_rate
+              ? `${shiftData.hourly_rate}円`
+              : "未設定",
+          });
         }
       } catch (err) {
         console.error("システムエラー:", err);
@@ -76,28 +102,19 @@ export default function ClockPage({
       }
     };
 
-    fetchAttendance();
+    fetchAttendanceAndShift();
   }, [user.id]);
 
   const handleClock = async (type: "clock_in" | "clock_out") => {
     try {
-      // 表示されている現在時刻を取得
       const now = new Date();
       const jstTime = new Intl.DateTimeFormat("ja-JP", {
         timeZone: "Asia/Tokyo",
         hour: "2-digit",
         minute: "2-digit",
-        second: "2-digit", // 秒を追加
+        second: "2-digit",
       }).format(now);
-      const jstDate = new Intl.DateTimeFormat("ja-JP", {
-        timeZone: "Asia/Tokyo",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      })
-        .format(now)
-        .split("/")
-        .join("-"); // YYYY-MM-DD
+      const jstDate = now.toISOString().split("T")[0];
 
       const response = await fetch("/api/user/clock", {
         method: "POST",
@@ -111,7 +128,7 @@ export default function ClockPage({
       });
 
       if (response.ok) {
-        const formattedTime = jstTime.slice(0, 5); // HH:MM のみ
+        const formattedTime = jstTime.slice(0, 5);
         if (type === "clock_in") {
           setClockInTime(formattedTime);
           setIsClockInDisabled(true);
@@ -133,15 +150,20 @@ export default function ClockPage({
   return (
     <UserLayout userName={user.name}>
       <div className="text-center">
-        <h1 className="text-3xl font-bold mb-4">出退勤打刻</h1>
-        <p className="text-4xl font-bold mb-6">{currentTime}</p>{" "}
-        {/* HH:MM:SS フォーマット */}
-        <div className="mb-6">
-          <p className="text-xl">出勤時間：{clockInTime}</p>
+        <h1 className="text-3xl font-bold mb-8">出退勤打刻</h1>
+        <p className="text-4xl font-bold mb-6">{currentTime}</p>
+        <div className="mb-8">
+          <p className="text-xl mb-2">出勤時間：{clockInTime}</p>
           <p className="text-xl">退勤時間：{clockOutTime}</p>
         </div>
-        <p className="text-red-500 mb-4">{status}</p>
-        <div className="flex justify-center gap-4">
+        <div className="bg-gray-100 p-6 rounded shadow-md inline-block">
+          <h2 className="text-2xl font-bold mb-4">今日のシフト情報</h2>
+          <p className="text-xl mb-2">開始時間：{shiftInfo.startTime}</p>
+          <p className="text-xl mb-2">終了時間：{shiftInfo.endTime}</p>
+          <p className="text-xl">時給単価：{shiftInfo.hourlyRate}</p>
+        </div>
+        <p className="text-red-500 mt-4">{status}</p>
+        <div className="flex justify-center gap-4 mt-6">
           <button
             onClick={() => handleClock("clock_in")}
             className={`px-6 py-3 rounded ${
