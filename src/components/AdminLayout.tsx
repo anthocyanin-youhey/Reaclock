@@ -65,8 +65,13 @@ export default function AdminLayout({
     <div className="flex flex-col min-h-screen">
       <header className="bg-blue-500 text-white relative">
         <div className="container mx-auto flex justify-between items-center py-4 px-6">
-          {/* タイトル */}
-          <h1 className="text-xl font-bold">管理者ダッシュボード</h1>
+          {/* タイトルと管理者名 */}
+          <div>
+            <h1 className="text-xl font-bold">管理者ダッシュボード</h1>
+            <p className="text-sm mt-1">
+              {displayedAdminName} さんでログイン中
+            </p>
+          </div>
 
           {/* ナビゲーション（デスクトップ） */}
           <nav className="hidden md:flex space-x-4 items-center">
@@ -102,11 +107,8 @@ export default function AdminLayout({
             </Link>
           </nav>
 
-          {/* ログイン中の管理者名とログアウトボタン */}
+          {/* ログイン中の管理者名とログアウトボタン（デスクトップ） */}
           <div className="hidden md:flex items-center space-x-4">
-            <p className="text-sm font-light">
-              {displayedAdminName} さんでログイン中
-            </p>
             <button
               onClick={handleLogout}
               className="py-2 px-4 rounded border border-red-500 bg-red-500 text-white text-sm hover:bg-white hover:text-red-500 transition-all"
@@ -115,7 +117,7 @@ export default function AdminLayout({
             </button>
           </div>
 
-          {/* ハンバーガーメニュー */}
+          {/* ハンバーガーメニューボタン */}
           <button
             className="block md:hidden text-white focus:outline-none z-50"
             onClick={() => setMenuOpen(!menuOpen)}
@@ -145,13 +147,10 @@ export default function AdminLayout({
             menuOpen ? "translate-x-0" : "translate-x-full"
           } transition-transform duration-300 ease-in-out z-40`}
         >
-          <button
-            className="absolute top-4 right-4 text-white text-xl focus:outline-none"
-            onClick={() => setMenuOpen(false)}
-          >
-            ✕
-          </button>
-          <ul className="mt-16 space-y-4 px-6">
+          <div className="p-6 border-b border-blue-500">
+            <p className="text-sm font-light">{displayedAdminName} さん</p>
+          </div>
+          <ul className="mt-4 space-y-4 px-6">
             <li>
               <Link
                 href="/admin/dashboard"

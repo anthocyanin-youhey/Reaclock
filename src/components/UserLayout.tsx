@@ -37,7 +37,13 @@ export default function UserLayout({
       {/* ヘッダー部分 */}
       <header className="bg-green-500 text-white relative">
         <div className="container mx-auto flex justify-between items-center py-4 px-6">
-          <h1 className="text-xl font-bold">利用者画面</h1>
+          <div className="flex items-center space-x-2">
+            <h1 className="text-xl font-bold">利用者画面</h1>
+            {/* スマホサイズでのユーザー名表示 */}
+            <span className="text-sm font-light ml-2 md:hidden">
+              {userName} さん
+            </span>
+          </div>
 
           {/* ナビゲーション（デスクトップ表示） */}
           <div className="hidden md:flex items-center space-x-4">
@@ -93,17 +99,15 @@ export default function UserLayout({
             menuOpen ? "translate-x-0" : "translate-x-full"
           } transition-transform duration-300 ease-in-out z-40`}
         >
-          <button
-            className="absolute top-4 right-4 text-white text-xl focus:outline-none"
-            onClick={() => setMenuOpen(false)}
-          >
-            ✕
-          </button>
-          <ul className="mt-16 space-y-4 px-6">
+          <div className="p-6 border-b border-green-500">
+            <p className="text-sm font-light">{userName} さん</p>
+          </div>
+          <ul className="mt-4 space-y-4 px-6">
             <li>
               <Link
                 href="/user/clock"
                 className="block py-2 px-4 rounded hover:bg-green-700 cursor-pointer"
+                onClick={() => setMenuOpen(false)}
               >
                 打刻
               </Link>
@@ -112,6 +116,7 @@ export default function UserLayout({
               <Link
                 href="/user/attendance"
                 className="block py-2 px-4 rounded hover:bg-green-700 cursor-pointer"
+                onClick={() => setMenuOpen(false)}
               >
                 履歴
               </Link>

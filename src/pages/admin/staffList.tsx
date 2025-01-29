@@ -26,11 +26,6 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
   const [sortKey, setSortKey] = useState<string>("employee_number");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
-  // アクションモーダル関連の状態管理
-  const [selectedStaffForAction, setSelectedStaffForAction] =
-    useState<any>(null);
-  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
-
   // Supabaseからスタッフ一覧を取得する関数
   const fetchStaffList = async () => {
     try {
@@ -110,6 +105,17 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
         <h1 className="text-2xl font-bold mb-4">スタッフ一覧</h1>
         {errorMessage && <p className="text-red-500">{errorMessage}</p>}
 
+        {/* スマホサイズ時の操作説明 */}
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded md:hidden">
+          <p className="text-sm text-yellow-800">
+            <span className="font-medium">
+              📱 スマートフォンをご利用の方へ：
+            </span>
+            <br />
+            スタッフの名前をタップすると、編集メニューが表示されます。
+          </p>
+        </div>
+
         {/* 取扱説明文 */}
         <div className="mb-6 p-4 bg-blue-100 border border-blue-300 rounded">
           <p className="text-sm text-blue-800">
@@ -133,85 +139,67 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
         {/* スタッフ一覧テーブル */}
         <div className="overflow-x-auto">
           <table className="min-w-full bg-white border-collapse border border-gray-300">
+            {/* ソート可能なテーブルヘッダー */}
             <thead className="bg-gray-50">
               <tr>
                 <th
+                  className="border border-gray-300 px-4 py-2 cursor-pointer whitespace-nowrap"
                   onClick={() => sortStaffList("employee_number")}
-                  className="border border-gray-300 px-2 py-2 cursor-pointer whitespace-nowrap text-sm hover:bg-gray-100"
                 >
                   社員番号
-                  <span className="ml-1">
-                    {sortKey === "employee_number" &&
-                      (sortOrder === "asc" ? "▲" : "▼")}
-                  </span>
+                  {sortKey === "employee_number" &&
+                    (sortOrder === "asc" ? " ▲" : " ▼")}
                 </th>
                 <th
+                  className="border border-gray-300 px-4 py-2 cursor-pointer whitespace-nowrap"
                   onClick={() => sortStaffList("name")}
-                  className="border border-gray-300 px-2 py-2 cursor-pointer whitespace-nowrap text-sm hover:bg-gray-100"
                 >
                   名前
-                  <span className="ml-1">
-                    {sortKey === "name" && (sortOrder === "asc" ? "▲" : "▼")}
-                  </span>
+                  {sortKey === "name" && (sortOrder === "asc" ? " ▲" : " ▼")}
                 </th>
                 <th
+                  className="border border-gray-300 px-4 py-2 cursor-pointer whitespace-nowrap"
                   onClick={() => sortStaffList("is_admin")}
-                  className="border border-gray-300 px-2 py-2 cursor-pointer whitespace-nowrap text-sm hover:bg-gray-100"
                 >
                   権限
-                  <span className="ml-1">
-                    {sortKey === "is_admin" &&
-                      (sortOrder === "asc" ? "▲" : "▼")}
-                  </span>
+                  {sortKey === "is_admin" &&
+                    (sortOrder === "asc" ? " ▲" : " ▼")}
                 </th>
-                <th className="border border-gray-300 px-2 py-2 whitespace-nowrap text-sm hidden xl:table-cell">
+                <th className="border border-gray-300 px-4 py-2 whitespace-nowrap">
                   アクション
-                </th>
-                <th className="border border-gray-300 px-2 py-2 whitespace-nowrap text-sm hidden xl:table-cell">
-                  削除
                 </th>
               </tr>
             </thead>
+            {/* スタッフ情報の一覧 */}
             <tbody>
               {filteredList.map((staff) => (
                 <tr key={staff.id} className="hover:bg-gray-50">
-                  <td className="border border-gray-300 px-2 py-2 whitespace-nowrap text-sm">
+                  <td className="border border-gray-300 px-4 py-2 whitespace-nowrap">
                     {staff.employee_number}
                   </td>
-                  <td
-                    className="border border-gray-300 px-2 py-2 whitespace-nowrap text-sm xl:cursor-default cursor-pointer hover:bg-blue-50 xl:hover:bg-transparent relative group"
-                    onClick={() => {
-                      if (window.innerWidth < 1280) {
-                        // xl breakpoint
-                        setSelectedStaffForAction(staff);
-                        setIsActionModalOpen(true);
-                      }
-                    }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span>{staff.name}</span>
-                    </div>
+                  <td className="border border-gray-300 px-4 py-2 whitespace-nowrap">
+                    {staff.name}
                   </td>
-                  <td className="border border-gray-300 px-2 py-2 text-center whitespace-nowrap text-sm">
+                  <td className="border border-gray-300 px-4 py-2 text-center whitespace-nowrap">
                     {staff.is_admin ? (
-                      <span className="text-green-500 font-medium">管理者</span>
+                      <span className="text-green-500 font-bold">管理者</span>
                     ) : (
                       <span className="text-gray-500">スタッフ</span>
                     )}
                   </td>
-                  <td className="border border-gray-300 p-1.5 hidden xl:table-cell">
-                    <div className="grid grid-cols-2 gap-1">
-                      {/* PCサイズ時のアクションボタン群 */}
+                  <td className="border border-gray-300 px-2 py-2">
+                    {/* アクションボタン群 */}
+                    <div className="flex flex-wrap gap-2 justify-center">
                       <button
-                        className="bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium hover:bg-blue-600 transition-colors duration-200 whitespace-nowrap w-full"
+                        className="bg-blue-500 text-white px-2 py-1 rounded-md hover:bg-blue-600 transition-colors duration-200 text-sm font-medium shadow-sm whitespace-nowrap"
                         onClick={() =>
                           router.push(`/admin/editStaff/${staff.id}`)
                         }
                       >
-                        編集
+                        社員情報編集
                       </button>
                       <button
-                        className="bg-purple-500 text-white px-2 py-1 rounded text-xs font-medium hover:bg-purple-600 transition-colors duration-200 whitespace-nowrap w-full"
+                        className="bg-purple-500 text-white px-2 py-1 rounded-md hover:bg-purple-600 transition-colors duration-200 text-sm font-medium shadow-sm whitespace-nowrap"
                         onClick={() =>
                           router.push(`/admin/staffAttendance/${staff.id}`)
                         }
@@ -219,7 +207,7 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
                         打刻履歴編集
                       </button>
                       <button
-                        className="bg-green-500 text-white px-2 py-1 rounded text-xs font-medium hover:bg-green-600 transition-colors duration-200 whitespace-nowrap w-full"
+                        className="bg-green-500 text-white px-2 py-1 rounded-md hover:bg-green-600 transition-colors duration-200 text-sm font-medium shadow-sm whitespace-nowrap"
                         onClick={() =>
                           router.push(`/admin/workData/${staff.id}`)
                         }
@@ -227,25 +215,23 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
                         勤務地データ登録
                       </button>
                       <button
-                        className="bg-orange-500 text-white px-2 py-1 rounded text-xs font-medium hover:bg-orange-600 transition-colors duration-200 whitespace-nowrap w-full"
+                        className="bg-orange-500 text-white px-2 py-1 rounded-md hover:bg-orange-600 transition-colors duration-200 text-sm font-medium shadow-sm whitespace-nowrap"
                         onClick={() =>
                           router.push(`/admin/shiftRegister/${staff.id}`)
                         }
                       >
                         シフト登録
                       </button>
+                      <button
+                        className="bg-red-500 text-white px-2 py-1 rounded-md hover:bg-red-600 transition-colors duration-200 text-sm font-medium shadow-sm whitespace-nowrap"
+                        onClick={() => {
+                          setSelectedStaff(staff);
+                          setIsModalOpen(true);
+                        }}
+                      >
+                        社員情報削除
+                      </button>
                     </div>
-                  </td>
-                  <td className="border border-gray-300 p-1.5 text-center hidden xl:table-cell">
-                    <button
-                      className="bg-red-500 text-white px-4 py-1 rounded text-xs font-medium hover:bg-red-600 transition-colors duration-200 whitespace-nowrap w-full"
-                      onClick={() => {
-                        setSelectedStaff(staff);
-                        setIsModalOpen(true);
-                      }}
-                    >
-                      削除
-                    </button>
                   </td>
                 </tr>
               ))}
@@ -273,83 +259,6 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
                   className="px-6 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
                 >
                   中止
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* アクションモーダル（1280px未満時） */}
-        {isActionModalOpen && selectedStaffForAction && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-              <div className="p-4 border-b">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-medium">
-                    {selectedStaffForAction.name}
-                  </h3>
-                  <span className="text-sm text-gray-500">
-                    社員番号: {selectedStaffForAction.employee_number}
-                  </span>
-                </div>
-              </div>
-              <div className="p-4 space-y-3">
-                <button
-                  className="bg-blue-500 text-white px-4 py-2.5 rounded text-sm font-medium hover:bg-blue-600 transition-colors duration-200 w-full flex items-center justify-center space-x-2"
-                  onClick={() => {
-                    router.push(
-                      `/admin/editStaff/${selectedStaffForAction.id}`
-                    );
-                    setIsActionModalOpen(false);
-                  }}
-                >
-                  <span>社員情報編集</span>
-                </button>
-                <button
-                  className="bg-purple-500 text-white px-4 py-2.5 rounded text-sm font-medium hover:bg-purple-600 transition-colors duration-200 w-full flex items-center justify-center space-x-2"
-                  onClick={() =>
-                    router.push(
-                      `/admin/staffAttendance/${selectedStaffForAction.id}`
-                    )
-                  }
-                >
-                  <span>打刻履歴編集</span>
-                </button>
-                <button
-                  className="bg-green-500 text-white px-4 py-2.5 rounded text-sm font-medium hover:bg-green-600 transition-colors duration-200 w-full flex items-center justify-center space-x-2"
-                  onClick={() =>
-                    router.push(`/admin/workData/${selectedStaffForAction.id}`)
-                  }
-                >
-                  <span>勤務地データ登録</span>
-                </button>
-                <button
-                  className="bg-orange-500 text-white px-4 py-2.5 rounded text-sm font-medium hover:bg-orange-600 transition-colors duration-200 w-full flex items-center justify-center space-x-2"
-                  onClick={() =>
-                    router.push(
-                      `/admin/shiftRegister/${selectedStaffForAction.id}`
-                    )
-                  }
-                >
-                  <span>シフト登録</span>
-                </button>
-                <button
-                  className="bg-red-500 text-white px-4 py-2.5 rounded text-sm font-medium hover:bg-red-600 transition-colors duration-200 w-full flex items-center justify-center space-x-2"
-                  onClick={() => {
-                    setSelectedStaff(selectedStaffForAction);
-                    setIsActionModalOpen(false);
-                    setIsModalOpen(true);
-                  }}
-                >
-                  <span>社員情報削除</span>
-                </button>
-              </div>
-              <div className="p-4 border-t">
-                <button
-                  className="bg-gray-100 text-gray-800 px-4 py-2.5 rounded text-sm font-medium hover:bg-gray-200 transition-colors duration-200 w-full"
-                  onClick={() => setIsActionModalOpen(false)}
-                >
-                  閉じる
                 </button>
               </div>
             </div>
