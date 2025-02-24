@@ -57,27 +57,33 @@ export default function AttendanceRecords({
     }
   };
 
+  //登録済みシフトデータ取得用の関数
   const fetchAttendanceAndShiftData = async (staffId: string) => {
     try {
       const { data, error } = await supabase
         .from("shifts")
         .select(
           `
-          date,
-          start_time,
-          end_time,
-          hourly_rate,
-          work_data!fk_shifts_work_data (
-            work_location
-          ),
-          attendance_records!left (
-            id, 
-            clock_in,
-            clock_out,
-            status,
-            absent_reason
-          )
-        `
+      date,
+      start_time,
+      end_time,
+      user_hourly_rate_id,
+      user_hourly_rates!fk_shifts_user_hourly_rates(
+        id, 
+        hourly_rate,
+        work_data!fk_user_hourly_rates_work_location(
+          id,
+          location_name
+        )
+      ),
+      attendance_records!fk_attendance_records_shift(
+        id, 
+        clock_in,
+        clock_out,
+        status,
+        absent_reason
+      )
+    `
         )
         .eq("user_id", staffId)
         .gte("date", `${selectedMonth}-01`)
@@ -95,7 +101,18 @@ export default function AttendanceRecords({
         setError("データの取得に失敗しました。");
         console.error("データ取得エラー:", error);
       } else {
-        console.log("取得したデータ: ", data); // デバッグ用
+        console.log("取得したデータ: ", data);
+
+        // ✅ 欠勤理由をabsentReasonsステートに反映
+        const updatedAbsentReasons: Record<string, string> = {};
+        data?.forEach((record: any) => {
+          if (record.attendance_records?.absent_reason) {
+            updatedAbsentReasons[record.date] =
+              record.attendance_records.absent_reason;
+          }
+        });
+        setAbsentReasons(updatedAbsentReasons); // 欠勤理由をステートに反映
+
         setAttendanceAndShiftData(data || []);
       }
     } catch (err) {
@@ -225,7 +242,7 @@ export default function AttendanceRecords({
     const shiftEnd = record.end_time
       ? new Date(`1970-01-01T${record.end_time}`)
       : null;
-    const hourlyRate = record.hourly_rate;
+    const hourlyRate = record.user_hourly_rates?.hourly_rate;
 
     if (
       !attendance.clock_in ||
@@ -466,10 +483,13 @@ export default function AttendanceRecords({
                         {shift.end_time || "-"}
                       </td>
                       <td className="border px-2 py-1">
-                        {workData.work_location || "-"}
+                        {record.user_hourly_rates?.work_data?.location_name ||
+                          "-"}
                       </td>
                       <td className="border px-2 py-1">
-                        {shift.hourly_rate ? `${shift.hourly_rate}円` : "-"}
+                        {record.user_hourly_rates?.hourly_rate
+                          ? `${record.user_hourly_rates.hourly_rate}円`
+                          : "-"}
                       </td>
                       <td className="border px-2 py-1">
                         {attendance.clock_in

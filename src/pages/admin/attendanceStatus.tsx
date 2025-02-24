@@ -1,3 +1,4 @@
+//\reaclock\src\pages\admin\attendanceStatus.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabaseCliants";
 import AdminLayout from "../../components/AdminLayout";
@@ -11,13 +12,18 @@ type AttendanceRecord = {
   id: number;
   work_date: string;
   clock_in?: string;
-  status?: string; // 対応済み/未対応フラグ
+  status?: string;
   users: {
     name: string;
     employee_number: string;
   };
   shifts: {
     start_time: string;
+    user_hourly_rates: {
+      work_data: {
+        location_name: string;
+      };
+    };
   };
 };
 
@@ -28,9 +34,10 @@ export default function AttendanceStatus({
 }) {
   const [lateComers, setLateComers] = useState<AttendanceRecord[]>([]);
   const [error, setError] = useState<string>("");
-  const { setLateCount } = useLateCount(); // コンテキストの遅刻件数を更新
+  const [todayDate, setTodayDate] = useState<string>(""); // ✅ useStateで定義
+  const { setLateCount } = useLateCount();
 
-  // 日本時間の今日の日付を正確に取得
+  // ✅ 日本時間の日付を取得
   const getJapanDate = () => {
     const formatter = new Intl.DateTimeFormat("ja-JP", {
       timeZone: "Asia/Tokyo",
@@ -45,28 +52,41 @@ export default function AttendanceStatus({
     return `${year}-${month}-${day}`;
   };
 
-  const todayDate = getJapanDate();
+  useEffect(() => {
+    const date = getJapanDate();
+    setTodayDate(date); // ✅ 日付をセット
+    fetchTodayLateComers(date); // ✅ 日付を渡して取得
+  }, []);
 
-  const fetchTodayLateComers = async () => {
+  // ✅ 今日の遅刻者取得関数をtodayDate引数化
+  const fetchTodayLateComers = async (date: string) => {
+    if (!date) {
+      console.error("日付が未定義です。");
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from("attendance_records")
         .select(
           `
-          id,
-          work_date,
-          clock_in,
-          status,
-          users!inner (
-            name,
-            employee_number
-          ),
-          shifts!inner (
-            start_time
-          )
-        `
+    id,
+    work_date,
+    clock_in,
+    status,
+    users!inner (
+      name,
+      employee_number
+    ),
+    shifts!fk_attendance_records_shift (
+      start_time,
+      work_data!inner (
+        location_name
+      )
+    )
+    `
         )
-        .eq("work_date", todayDate) // 日本時間の今日の日付
+        .eq("work_date", date)
         .order("clock_in", { ascending: true });
 
       if (error) {
@@ -75,7 +95,7 @@ export default function AttendanceStatus({
         return;
       }
 
-      console.log("クエリ結果:", data);
+      console.log("取得したデータ:", data);
 
       const formattedData: AttendanceRecord[] = (data || []).map(
         (record: any) => ({
@@ -84,29 +104,17 @@ export default function AttendanceStatus({
           clock_in: record.clock_in,
           status: record.status || "未対応",
           users: record.users,
-          shifts: record.shifts,
+          shifts: {
+            start_time: record.shifts?.start_time || "-",
+            user_hourly_rates: {
+              work_data: {
+                location_name: record.shifts?.work_data?.location_name || "-",
+              },
+            },
+          },
         })
       );
-
-      // 遅刻者のみを絞り込み
-      const lateComersData = formattedData.filter((record) => {
-        const shiftStart = record.shifts?.start_time
-          ? new Date(`1970-01-01T${record.shifts.start_time}Z`)
-          : null; // UTCベースのシフト開始時刻
-        const clockIn = record.clock_in
-          ? new Date(`1970-01-01T${record.clock_in}Z`)
-          : null; // UTCベースの打刻時刻
-
-        return clockIn && shiftStart && clockIn > shiftStart;
-      });
-
-      setLateComers(lateComersData);
-
-      // 未対応の件数を更新
-      const unresolvedCount = lateComersData.filter(
-        (record) => record.status === "未対応"
-      ).length;
-      setLateCount(unresolvedCount);
+      setLateComers(formattedData);
     } catch (err) {
       console.error("データ取得エラー:", err);
       setError("データ取得中にエラーが発生しました。");
@@ -174,8 +182,15 @@ export default function AttendanceStatus({
   };
 
   useEffect(() => {
-    fetchTodayLateComers();
+    const date = getJapanDate();
+    setTodayDate(date); // ✅ ステートに日付を設定
   }, []);
+
+  useEffect(() => {
+    if (todayDate) {
+      fetchTodayLateComers(todayDate); // ✅ todayDateを引数として渡す
+    }
+  }, [todayDate]);
 
   return (
     <AdminLayout adminName={admin.name}>
@@ -184,7 +199,9 @@ export default function AttendanceStatus({
         {error && <p className="text-red-500">{error}</p>}
 
         <div className="text-center mb-8">
-          <h2 className="text-4xl font-bold">{todayDate}</h2>
+          <h2 className="text-4xl font-bold">
+            {todayDate || "日付を取得中..."} {/* ✅ ローディング対応 */}
+          </h2>
         </div>
 
         <h2 className="text-xl font-bold mb-4">今日の遅刻者一覧</h2>
@@ -195,6 +212,8 @@ export default function AttendanceStatus({
                 <th className="border px-4 py-2">社員番号</th>
                 <th className="border px-4 py-2">名前</th>
                 <th className="border px-4 py-2">シフト開始</th>
+                <th className="border px-4 py-2">勤務地</th>{" "}
+                {/* ✅ 追加：勤務地 */}
                 <th className="border px-4 py-2">出勤打刻</th>
                 <th className="border px-4 py-2">遅刻時間</th>
                 <th className="border px-4 py-2">状態</th>
@@ -231,6 +250,10 @@ export default function AttendanceStatus({
                     </td>
                     <td className="border px-4 py-2">
                       {record.shifts.start_time || "-"}
+                    </td>
+                    <td className="border px-4 py-2">
+                      {record.shifts.user_hourly_rates?.work_data
+                        ?.location_name || "-"}
                     </td>
                     <td className="border px-4 py-2">
                       {formatToJapanTime(record.clock_in) || "-"}

@@ -61,6 +61,7 @@ export default function ClockPage({
           .split("/")
           .join("-");
 
+        // ✅ 出退勤情報取得
         const { data: attendanceData, error: attendanceError } = await supabase
           .from("attendance_records")
           .select("*")
@@ -95,9 +96,23 @@ export default function ClockPage({
           setIsClockOutDisabled(!!attendanceData?.clock_out);
         }
 
+        // ✅ 新しいリレーションに基づくシフト情報取得
         const { data: shiftData, error: shiftError } = await supabase
           .from("shifts")
-          .select("id, work_data_id, start_time, end_time")
+          .select(
+            `
+    id,
+    date,
+    start_time,
+    end_time,
+    user_hourly_rates!fk_shifts_user_hourly_rate(
+      hourly_rate,
+      work_data!fk_user_hourly_rates_work_location(
+        location_name
+      )
+    )
+  `
+          )
           .eq("user_id", user.id)
           .eq("date", jstDate)
           .maybeSingle();
@@ -107,16 +122,19 @@ export default function ClockPage({
           return;
         }
 
-        if (shiftData?.work_data_id) {
-          const { data: workData, error: workDataError } = await supabase
-            .from("work_data")
-            .select("work_location, hourly_rate")
-            .eq("id", shiftData.work_data_id)
-            .single();
+        if (shiftData) {
+          // ✅ 勤務地と時給を user_hourly_rates 経由で取得
+          if (shiftData) {
+            // ✅ user_hourly_rates と work_data が配列の場合に対応
+            const userHourlyRate = Array.isArray(shiftData.user_hourly_rates)
+              ? shiftData.user_hourly_rates[0] // 配列の場合、最初の要素を取得
+              : shiftData.user_hourly_rates;
 
-          if (workDataError) {
-            console.error("勤務地情報の取得エラー:", workDataError);
-          } else if (workData) {
+            const workData = Array.isArray(userHourlyRate?.work_data)
+              ? userHourlyRate.work_data[0] // 配列の場合、最初の要素を取得
+              : userHourlyRate?.work_data;
+
+            // ✅ シフト情報のセット
             setShiftInfo({
               startTime: shiftData.start_time
                 ? new Date(
@@ -134,11 +152,21 @@ export default function ClockPage({
                     minute: "2-digit",
                   })
                 : "未設定",
-              hourlyRate: workData.hourly_rate
-                ? `${workData.hourly_rate}円`
+              hourlyRate: userHourlyRate?.hourly_rate
+                ? `${userHourlyRate.hourly_rate}円`
                 : "未設定",
             });
-            setTodayWorkLocation(workData.work_location || "未設定");
+
+            // ✅ 勤務地情報のセット
+            setTodayWorkLocation(workData?.location_name || "未設定");
+          } else {
+            // ✅ シフト情報が存在しない場合のデフォルト値
+            setShiftInfo({
+              startTime: "未設定",
+              endTime: "未設定",
+              hourlyRate: "未設定",
+            });
+            setTodayWorkLocation("未設定");
           }
         } else {
           setShiftInfo({

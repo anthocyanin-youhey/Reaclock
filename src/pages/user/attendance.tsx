@@ -39,6 +39,7 @@ export default function AttendancePage({
   useEffect(() => {
     const fetchAttendanceAndShiftRecords = async () => {
       try {
+        // ✅ 打刻データ取得
         const { data: attendanceData, error: attendanceError } = await supabase
           .from("attendance_records")
           .select("work_date, clock_in, clock_out")
@@ -65,9 +66,22 @@ export default function AttendancePage({
           return acc;
         }, {} as Record<string, any>);
 
+        // ✅ 正しいリレーションを使用したシフトデータ取得
         const { data: shiftData, error: shiftError } = await supabase
           .from("shifts")
-          .select("date, start_time, end_time, hourly_rate")
+          .select(
+            `
+    date, 
+    start_time, 
+    end_time,
+    user_hourly_rates!fk_shifts_user_hourly_rate (
+      hourly_rate,
+      work_data!fk_user_hourly_rates_work_location (
+        location_name
+      )
+    )
+    `
+          )
           .eq("user_id", user.id)
           .gte("date", `${selectedMonth}-01`)
           .lte(
@@ -82,12 +96,19 @@ export default function AttendancePage({
 
         if (shiftError) {
           console.error("シフトデータ取得エラー:", shiftError);
-          setErrorMessage("データ取得に失敗しました。");
+          setErrorMessage("シフトデータの取得に失敗しました。");
           return;
         }
 
+        // ✅ 勤務地と時給単価をマッピング
         const shiftMap = (shiftData || []).reduce((acc, record) => {
-          acc[record.date] = record;
+          acc[record.date] = {
+            ...record,
+            // ✅ user_hourly_rates と work_data をオブジェクトとしてアクセス
+            hourly_rate: record.user_hourly_rates?.hourly_rate || "-",
+            location_name:
+              record.user_hourly_rates?.work_data?.location_name || "-",
+          };
           return acc;
         }, {} as Record<string, any>);
 
@@ -173,6 +194,7 @@ export default function AttendancePage({
                 <th className="border border-gray-300 px-4 py-2">
                   シフト終了時間
                 </th>
+                <th className="border border-gray-300 px-4 py-2">勤務地</th>
                 <th className="border border-gray-300 px-4 py-2">時給単価</th>
                 <th className="border border-gray-300 px-4 py-2">
                   出勤ステータス
@@ -203,6 +225,9 @@ export default function AttendancePage({
                     </td>
                     <td className="border border-gray-300 px-4 py-2 text-center">
                       {shift?.end_time || "-"}
+                    </td>
+                    <td className="border border-gray-300 px-4 py-2 text-center">
+                      {shift?.location_name || "-"}
                     </td>
                     <td className="border border-gray-300 px-4 py-2 text-center">
                       {shift?.hourly_rate ? `${shift.hourly_rate}円` : "-"}

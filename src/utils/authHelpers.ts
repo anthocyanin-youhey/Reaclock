@@ -3,7 +3,8 @@ import { supabase } from "./supabaseCliants";
 import { parseCookies } from "nookies";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key"; // 環境変数で管理してください
+// 環境変数から JWT_SECRET を取得（サーバーサイドで管理）
+const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
 
 // JWTトークンの検証
 const verifyToken = (token: string, scope: string) => {
@@ -71,32 +72,23 @@ export const requireUserAuth = async (context) => {
 };
 
 // サーバーサイド認証: 管理者用
-export const requireAdminAuth = async (context) => {
-  const cookies = parseCookies(context);
-  const adminToken = cookies["admin_session"]; // 管理者セッション
+export const requireAdminAuth = async (context?: any) => {
+  const cookies = context ? parseCookies(context) : parseCookies(); // クライアント・サーバー両方対応
+  const adminToken = cookies["admin_session"];
 
   if (!adminToken) {
-    console.log("管理者セッションが存在しません。");
-    return {
-      redirect: {
-        destination: "/admin/login",
-        permanent: false,
-      },
-    };
+    return context
+      ? { redirect: { destination: "/admin/login", permanent: false } }
+      : null;
   }
 
   const decoded = verifyToken(adminToken, "admin");
   if (!decoded) {
-    console.log("管理者トークンが無効です。");
-    return {
-      redirect: {
-        destination: "/admin/login",
-        permanent: false,
-      },
-    };
+    return context
+      ? { redirect: { destination: "/admin/login", permanent: false } }
+      : null;
   }
 
-  // データベースから管理者情報を取得
   const { data: admin, error } = await supabase
     .from("users")
     .select("id, name, is_admin")
@@ -104,14 +96,10 @@ export const requireAdminAuth = async (context) => {
     .single();
 
   if (error || !admin || !admin.is_admin) {
-    console.log("管理者の認証に失敗しました。");
-    return {
-      redirect: {
-        destination: "/admin/login",
-        permanent: false,
-      },
-    };
+    return context
+      ? { redirect: { destination: "/admin/login", permanent: false } }
+      : null;
   }
 
-  return { props: { admin } };
+  return context ? { props: { admin } } : admin; // クライアントなら `admin` オブジェクトだけ返す
 };

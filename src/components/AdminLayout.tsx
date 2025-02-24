@@ -1,8 +1,6 @@
-// src/components/AdminLayout.tsx
-
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLateCount } from "../context/LateCountContext"; // 遅刻件数を取得するためのコンテキスト
 
 export default function AdminLayout({
@@ -10,35 +8,14 @@ export default function AdminLayout({
   adminName,
 }: {
   children: React.ReactNode;
-  adminName?: string;
+  adminName: string; // 必須に変更
 }) {
   const router = useRouter();
   const [logoutMessage, setLogoutMessage] = useState<string>("");
   const [menuOpen, setMenuOpen] = useState(false); // ハンバーガーメニューの開閉状態
-  const [fetchedAdminName, setFetchedAdminName] = useState<string>("");
 
   // 未対応遅刻件数を取得するコンテキスト
   const { lateCount } = useLateCount();
-
-  // APIから管理者名を取得（バックアップ用）
-  useEffect(() => {
-    if (!adminName) {
-      const fetchAdminName = async () => {
-        try {
-          const response = await fetch("/api/admin/getAdminInfo");
-          const data = await response.json();
-          if (response.ok) {
-            setFetchedAdminName(data.name || "管理者");
-          } else {
-            console.error("管理者名の取得に失敗しました");
-          }
-        } catch (error) {
-          console.error("管理者名取得エラー:", error);
-        }
-      };
-      fetchAdminName();
-    }
-  }, [adminName]);
 
   // ログアウト処理
   const handleLogout = async () => {
@@ -59,8 +36,6 @@ export default function AdminLayout({
     }
   };
 
-  const displayedAdminName = adminName || fetchedAdminName;
-
   return (
     <div className="flex flex-col min-h-screen">
       <header className="bg-blue-500 text-white relative">
@@ -68,9 +43,7 @@ export default function AdminLayout({
           {/* タイトルと管理者名 */}
           <div>
             <h1 className="text-xl font-bold">管理者ダッシュボード</h1>
-            <p className="text-sm mt-1">
-              {displayedAdminName} さんでログイン中
-            </p>
+            <p className="text-sm mt-1">{adminName} さんでログイン中</p>
           </div>
 
           {/* ナビゲーション（デスクトップ） */}
@@ -103,6 +76,11 @@ export default function AdminLayout({
                     ⚠ 未対応{lateCount}件
                   </span>
                 )}
+              </span>
+            </Link>
+            <Link href="/admin/workLocations">
+              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
+                勤務地情報登録
               </span>
             </Link>
           </nav>
@@ -140,72 +118,6 @@ export default function AdminLayout({
             </svg>
           </button>
         </div>
-
-        {/* モバイルメニュー */}
-        <nav
-          className={`fixed top-0 right-0 h-full bg-blue-600 text-white w-64 transform ${
-            menuOpen ? "translate-x-0" : "translate-x-full"
-          } transition-transform duration-300 ease-in-out z-40`}
-        >
-          <div className="p-6 border-b border-blue-500">
-            <p className="text-sm font-light">{displayedAdminName} さん</p>
-          </div>
-          <ul className="mt-4 space-y-4 px-6">
-            <li>
-              <Link
-                href="/admin/dashboard"
-                className="block py-2 px-4 rounded hover:bg-blue-700 cursor-pointer"
-              >
-                ホーム
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/admin/createStaff"
-                className="block py-2 px-4 rounded hover:bg-blue-700 cursor-pointer"
-              >
-                スタッフ新規登録
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/admin/staffList"
-                className="block py-2 px-4 rounded hover:bg-blue-700 cursor-pointer"
-              >
-                スタッフ一覧
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/admin/attendanceRecords"
-                className="block py-2 px-4 rounded hover:bg-blue-700 cursor-pointer"
-              >
-                打刻履歴
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/admin/attendanceStatus"
-                className="block py-2 px-4 rounded hover:bg-blue-700 cursor-pointer flex items-center"
-              >
-                出欠/遅刻管理
-                {lateCount > 0 && (
-                  <span className="ml-2 text-yellow-500 font-bold">
-                    ⚠ 遅刻者未対応{lateCount}件
-                  </span>
-                )}
-              </Link>
-            </li>
-            <li className="mt-10">
-              <button
-                onClick={handleLogout}
-                className="block w-full py-2 px-4 rounded border border-red-500 bg-red-500 text-white text-sm hover:bg-white hover:text-red-500 transition-all"
-              >
-                ログアウト
-              </button>
-            </li>
-          </ul>
-        </nav>
       </header>
 
       {logoutMessage && (
