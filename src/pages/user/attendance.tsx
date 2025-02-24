@@ -66,7 +66,7 @@ export default function AttendancePage({
           return acc;
         }, {} as Record<string, any>);
 
-        // ✅ 正しいリレーションを使用したシフトデータ取得
+        // ✅ 正しいリレーションを明示
         const { data: shiftData, error: shiftError } = await supabase
           .from("shifts")
           .select(
@@ -100,14 +100,17 @@ export default function AttendancePage({
           return;
         }
 
-        // ✅ 勤務地と時給単価をマッピング
         const shiftMap = (shiftData || []).reduce((acc, record) => {
+          const userHourlyRate = Array.isArray(record.user_hourly_rates)
+            ? record.user_hourly_rates[0]
+            : record.user_hourly_rates;
+
           acc[record.date] = {
             ...record,
-            // ✅ user_hourly_rates と work_data をオブジェクトとしてアクセス
-            hourly_rate: record.user_hourly_rates?.hourly_rate || "-",
-            location_name:
-              record.user_hourly_rates?.work_data?.location_name || "-",
+            hourly_rate: userHourlyRate?.hourly_rate ?? "-",
+            location_name: Array.isArray(userHourlyRate?.work_data)
+              ? userHourlyRate.work_data[0]?.location_name ?? "-"
+              : "-",
           };
           return acc;
         }, {} as Record<string, any>);
@@ -230,7 +233,9 @@ export default function AttendancePage({
                       {shift?.location_name || "-"}
                     </td>
                     <td className="border border-gray-300 px-4 py-2 text-center">
-                      {shift?.hourly_rate ? `${shift.hourly_rate}円` : "-"}
+                      {shift?.hourly_rate && shift.hourly_rate !== "-"
+                        ? `${shift.hourly_rate}円`
+                        : "-"}
                     </td>
                     <td className="border border-gray-300 px-4 py-2 text-center">
                       {getStatus(record)}
