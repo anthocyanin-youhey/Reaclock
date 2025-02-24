@@ -66,7 +66,7 @@ export default function AttendancePage({
           return acc;
         }, {} as Record<string, any>);
 
-        // ✅ 正しいリレーションを明示
+        // ✅ 正しいリレーションを使用したシフトデータ取得
         const { data: shiftData, error: shiftError } = await supabase
           .from("shifts")
           .select(
@@ -100,17 +100,36 @@ export default function AttendancePage({
           return;
         }
 
-        const shiftMap = (shiftData || []).reduce((acc, record) => {
+        // ✅ 勤務地と時給単価をマッピング
+        interface WorkData {
+          location_name: string;
+        }
+
+        interface UserHourlyRate {
+          hourly_rate: number;
+          work_data: WorkData | WorkData[]; // 配列の可能性を考慮
+        }
+
+        interface ShiftRecord {
+          date: string;
+          start_time: string;
+          end_time: string;
+          user_hourly_rates: UserHourlyRate | UserHourlyRate[];
+        }
+
+        const shiftMap = (shiftData as ShiftRecord[]).reduce((acc, record) => {
           const userHourlyRate = Array.isArray(record.user_hourly_rates)
             ? record.user_hourly_rates[0]
             : record.user_hourly_rates;
 
+          const workLocation = Array.isArray(userHourlyRate?.work_data)
+            ? userHourlyRate.work_data[0]?.location_name ?? "-"
+            : (userHourlyRate?.work_data as WorkData)?.location_name ?? "-";
+
           acc[record.date] = {
             ...record,
             hourly_rate: userHourlyRate?.hourly_rate ?? "-",
-            location_name: Array.isArray(userHourlyRate?.work_data)
-              ? userHourlyRate.work_data[0]?.location_name ?? "-"
-              : "-",
+            location_name: workLocation,
           };
           return acc;
         }, {} as Record<string, any>);
@@ -233,9 +252,7 @@ export default function AttendancePage({
                       {shift?.location_name || "-"}
                     </td>
                     <td className="border border-gray-300 px-4 py-2 text-center">
-                      {shift?.hourly_rate && shift.hourly_rate !== "-"
-                        ? `${shift.hourly_rate}円`
-                        : "-"}
+                      {shift?.hourly_rate ? `${shift.hourly_rate}円` : "-"}
                     </td>
                     <td className="border border-gray-300 px-4 py-2 text-center">
                       {getStatus(record)}
