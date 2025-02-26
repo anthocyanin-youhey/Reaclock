@@ -1,3 +1,4 @@
+//reaclock/src/pages/user/clock.tsx
 import { useState, useEffect } from "react";
 import { requireUserAuth } from "../../utils/authHelpers";
 import UserLayout from "../../components/UserLayout";
@@ -6,6 +7,7 @@ import { supabase } from "../../utils/supabaseCliants";
 export const getServerSideProps = requireUserAuth;
 
 type ShiftData = {
+  id: number; // ✅ shift_idを追加
   start_time: string | null;
   end_time: string | null;
   hourly_rate: number | null;
@@ -22,6 +24,7 @@ export default function ClockPage({
   const [currentTime, setCurrentTime] = useState<string>("未設定");
   const [clockInTime, setClockInTime] = useState<string>("未記録");
   const [clockOutTime, setClockOutTime] = useState<string>("未記録");
+  const [shiftId, setShiftId] = useState<number | null>(null);
   const [shiftInfo, setShiftInfo] = useState<{
     startTime: string;
     endTime: string;
@@ -62,16 +65,14 @@ export default function ClockPage({
           .join("-");
 
         // ✅ 出退勤情報取得
-        const { data: attendanceData, error: attendanceError } = await supabase
+        const { data: attendanceData } = await supabase
           .from("attendance_records")
           .select("*")
           .eq("user_id", user.id)
           .eq("work_date", jstDate)
           .maybeSingle();
 
-        if (attendanceError) {
-          console.error("出退勤情報の取得エラー:", attendanceError);
-        } else {
+        if (attendanceData) {
           setClockInTime(
             attendanceData?.clock_in
               ? new Date(
@@ -96,8 +97,8 @@ export default function ClockPage({
           setIsClockOutDisabled(!!attendanceData?.clock_out);
         }
 
-        // ✅ 新しいリレーションに基づくシフト情報取得
-        const { data: shiftData, error: shiftError } = await supabase
+        // ✅ シフト情報取得
+        const { data: shiftData } = await supabase
           .from("shifts")
           .select(
             `
@@ -117,64 +118,41 @@ export default function ClockPage({
           .eq("date", jstDate)
           .maybeSingle();
 
-        if (shiftError) {
-          console.error("シフト情報の取得エラー:", shiftError);
-          return;
-        }
-
         if (shiftData) {
-          // ✅ 勤務地と時給を user_hourly_rates 経由で取得
-          if (shiftData) {
-            // ✅ user_hourly_rates と work_data が配列の場合に対応
-            const userHourlyRate = Array.isArray(shiftData.user_hourly_rates)
-              ? shiftData.user_hourly_rates[0] // 配列の場合、最初の要素を取得
-              : shiftData.user_hourly_rates;
+          setShiftId(shiftData.id); // ✅ shiftIdをステートに保持
 
-            const workData = Array.isArray(userHourlyRate?.work_data)
-              ? userHourlyRate.work_data[0] // 配列の場合、最初の要素を取得
-              : userHourlyRate?.work_data;
+          const userHourlyRate = Array.isArray(shiftData.user_hourly_rates)
+            ? shiftData.user_hourly_rates[0]
+            : shiftData.user_hourly_rates;
 
-            // ✅ シフト情報のセット
-            setShiftInfo({
-              startTime: shiftData.start_time
-                ? new Date(
-                    `2000-01-01T${shiftData.start_time}`
-                  ).toLocaleTimeString("ja-JP", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "未設定",
-              endTime: shiftData.end_time
-                ? new Date(
-                    `2000-01-01T${shiftData.end_time}`
-                  ).toLocaleTimeString("ja-JP", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "未設定",
-              hourlyRate: userHourlyRate?.hourly_rate
-                ? `${userHourlyRate.hourly_rate}円`
-                : "未設定",
-            });
+          const workData = Array.isArray(userHourlyRate?.work_data)
+            ? userHourlyRate.work_data[0]
+            : userHourlyRate?.work_data;
 
-            // ✅ 勤務地情報のセット
-            setTodayWorkLocation(workData?.location_name || "未設定");
-          } else {
-            // ✅ シフト情報が存在しない場合のデフォルト値
-            setShiftInfo({
-              startTime: "未設定",
-              endTime: "未設定",
-              hourlyRate: "未設定",
-            });
-            setTodayWorkLocation("未設定");
-          }
-        } else {
           setShiftInfo({
-            startTime: "未設定",
-            endTime: "未設定",
-            hourlyRate: "未設定",
+            startTime: shiftData.start_time
+              ? new Date(
+                  `2000-01-01T${shiftData.start_time}`
+                ).toLocaleTimeString("ja-JP", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "未設定",
+            endTime: shiftData.end_time
+              ? new Date(`2000-01-01T${shiftData.end_time}`).toLocaleTimeString(
+                  "ja-JP",
+                  {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }
+                )
+              : "未設定",
+            hourlyRate: userHourlyRate?.hourly_rate
+              ? `${userHourlyRate.hourly_rate}円`
+              : "未設定",
           });
-          setTodayWorkLocation("未設定");
+
+          setTodayWorkLocation(workData?.location_name || "未設定");
         }
       } catch (err) {
         console.error("システムエラー:", err);
@@ -185,6 +163,7 @@ export default function ClockPage({
     fetchAttendanceAndShift();
   }, [user.id]);
 
+  // ✅ 出退勤時に shift_id を含めて登録
   const handleClock = async (type: "clock_in" | "clock_out") => {
     try {
       const now = new Date();
@@ -204,6 +183,7 @@ export default function ClockPage({
           type,
           time: jstTime,
           date: jstDate,
+          shiftId, // ✅ shift_idを追加
         }),
       });
 

@@ -1,3 +1,4 @@
+//reaclock\src\pages\admin\attendanceRecords.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabaseCliants";
 import AdminLayout from "../../components/AdminLayout";
@@ -58,32 +59,56 @@ export default function AttendanceRecords({
   };
 
   //登録済みシフトデータ取得用の関数
+
+  // ✅ インターフェース定義
+  interface WorkData {
+    location_name: string;
+  }
+
+  interface UserHourlyRate {
+    hourly_rate: number;
+    work_data: WorkData | WorkData[]; // 配列も考慮
+  }
+
+  interface AttendanceRecord {
+    clock_in?: string;
+    clock_out?: string;
+    status?: string;
+    absent_reason?: string;
+  }
+
+  interface ShiftRecord {
+    id: string;
+    date: string;
+    start_time?: string;
+    end_time?: string;
+    user_hourly_rates: UserHourlyRate | UserHourlyRate[];
+    attendance_records?: AttendanceRecord;
+  }
+
+  // ✅ 勤務データ取得 (勤務地情報含む)
   const fetchAttendanceAndShiftData = async (staffId: string) => {
     try {
       const { data, error } = await supabase
         .from("shifts")
         .select(
           `
-      date,
-      start_time,
-      end_time,
-      user_hourly_rate_id,
-      user_hourly_rates!fk_shifts_user_hourly_rates(
-        id, 
-        hourly_rate,
-        work_data!fk_user_hourly_rates_work_location(
+        id,
+        date,
+        start_time,
+        end_time,
+        user_hourly_rates!fk_shifts_user_hourly_rate(
+          hourly_rate,
+          work_data!fk_user_hourly_rates_work_location(location_name)
+        ),
+        attendance_records!fk_attendance_records_shift(
           id,
-          location_name
+          clock_in,
+          clock_out,
+          status,
+          absent_reason
         )
-      ),
-      attendance_records!fk_attendance_records_shift(
-        id, 
-        clock_in,
-        clock_out,
-        status,
-        absent_reason
-      )
-    `
+      `
         )
         .eq("user_id", staffId)
         .gte("date", `${selectedMonth}-01`)
@@ -101,22 +126,44 @@ export default function AttendanceRecords({
         setError("データの取得に失敗しました。");
         console.error("データ取得エラー:", error);
       } else {
-        console.log("取得したデータ: ", data);
+        console.log("✅ 取得したデータ:", data);
 
-        // ✅ 欠勤理由をabsentReasonsステートに反映
-        const updatedAbsentReasons: Record<string, string> = {};
-        data?.forEach((record: any) => {
-          if (record.attendance_records?.absent_reason) {
-            updatedAbsentReasons[record.date] =
-              record.attendance_records.absent_reason;
-          }
-        });
-        setAbsentReasons(updatedAbsentReasons); // 欠勤理由をステートに反映
+        // ✅ attendanceMap をここに移動
+        const attendanceMap = (data || []).reduce((acc, record) => {
+          acc[record.date] = {
+            clock_in: record.attendance_records?.[0]?.clock_in ?? "-",
+            clock_out: record.attendance_records?.[0]?.clock_out ?? "-",
+          };
+          return acc;
+        }, {} as Record<string, any>);
 
-        setAttendanceAndShiftData(data || []);
+        console.log("✅ attendanceMap:", attendanceMap);
+
+        setAttendanceAndShiftData(
+          (data as ShiftRecord[]).map((record) => {
+            const userHourlyRate = Array.isArray(record.user_hourly_rates)
+              ? record.user_hourly_rates[0]
+              : record.user_hourly_rates;
+
+            const workLocation = Array.isArray(userHourlyRate?.work_data)
+              ? userHourlyRate.work_data[0]?.location_name ?? "-"
+              : (userHourlyRate?.work_data as WorkData)?.location_name ?? "-";
+
+            const clockIn = record.attendance_records?.[0]?.clock_in ?? "-";
+            const clockOut = record.attendance_records?.[0]?.clock_out ?? "-";
+
+            return {
+              ...record,
+              hourly_rate: userHourlyRate?.hourly_rate ?? "-",
+              location_name: workLocation,
+              clock_in: clockIn,
+              clock_out: clockOut,
+            };
+          })
+        );
       }
     } catch (err) {
-      console.error("データ取得エラー:", err);
+      console.error("❌ データ取得エラー:", err);
       setError("データ取得中にエラーが発生しました。");
     }
   };
@@ -263,8 +310,7 @@ export default function AttendanceRecords({
     const workedMilliseconds = actualEnd.getTime() - actualStart.getTime();
     if (workedMilliseconds <= 0) return "-";
 
-    const workedHours = Math.floor(workedMilliseconds / (1000 * 60 * 60));
-
+    const workedHours = workedMilliseconds / (1000 * 60 * 60);
     return `${Math.floor(workedHours * hourlyRate)}円`;
   };
 
@@ -483,22 +529,19 @@ export default function AttendanceRecords({
                         {shift.end_time || "-"}
                       </td>
                       <td className="border px-2 py-1">
-                        {record.user_hourly_rates?.work_data?.location_name ||
-                          "-"}
+                        {record.location_name || "-"}
                       </td>
                       <td className="border px-2 py-1">
-                        {record.user_hourly_rates?.hourly_rate
-                          ? `${record.user_hourly_rates.hourly_rate}円`
+                        {record.hourly_rate ? `${record.hourly_rate}円` : "-"}
+                      </td>
+                      <td className="border border-gray-300 px-4 py-2 text-center">
+                        {record?.clock_in && record?.clock_in !== "-"
+                          ? formatToJapanTime(record.clock_in)
                           : "-"}
                       </td>
-                      <td className="border px-2 py-1">
-                        {attendance.clock_in
-                          ? formatToJapanTime(attendance.clock_in)
-                          : "-"}
-                      </td>
-                      <td className="border px-2 py-1">
-                        {attendance.clock_out
-                          ? formatToJapanTime(attendance.clock_out)
+                      <td className="border border-gray-300 px-4 py-2 text-center">
+                        {record?.clock_out && record?.clock_out !== "-"
+                          ? formatToJapanTime(record.clock_out)
                           : "-"}
                       </td>
                       <td className="border px-2 py-1">{status}</td>
