@@ -1,3 +1,4 @@
+//reaclock\src\pages\user\attendance.tsx
 // 必要なインポート
 import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabaseCliants";

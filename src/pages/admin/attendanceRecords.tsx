@@ -1,4 +1,5 @@
-//reaclock\src\pages\admin\attendanceRecords.tsx
+// reaclock\src\pages\admin\attendanceRecords.tsx
+
 import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabaseCliants";
 import AdminLayout from "../../components/AdminLayout";
@@ -7,6 +8,59 @@ import { formatToJapanTime } from "../../utils/dateHelpers";
 import * as XLSX from "xlsx"; // Excel出力用
 
 export const getServerSideProps = requireAdminAuth;
+
+/** 15分単位で切り捨てるヘルパー関数 */
+function floorToQuarter(dateObj: Date): Date {
+  const year = dateObj.getFullYear();
+  const month = dateObj.getMonth();
+  const date = dateObj.getDate();
+  const hours = dateObj.getHours();
+  const minutes = dateObj.getMinutes();
+
+  const flooredMinutes = minutes - (minutes % 15);
+  return new Date(year, month, date, hours, flooredMinutes, 0, 0);
+}
+
+// -- 型定義例 --
+
+interface WorkData {
+  location_name?: string;
+}
+
+interface UserHourlyRate {
+  hourly_rate?: number;
+  work_data?: WorkData | WorkData[];
+}
+
+interface ShiftRecord {
+  date: string;
+  start_time?: string;
+  end_time?: string;
+  user_hourly_rates?: UserHourlyRate | UserHourlyRate[];
+}
+
+interface AttendanceRecord {
+  work_date: string;
+  clock_in?: string;
+  clock_out?: string;
+  status?: string;
+  absent_reason?: string;
+}
+
+// **shiftMap や attendanceMap に入る要素は「ないかもしれない」ので Partial<> で受け取る
+type PartialShiftRecord = {
+  start_time?: string;
+  end_time?: string;
+  hourly_rate?: number | string;
+  location_name?: string;
+};
+
+type PartialAttendanceRecord = {
+  clock_in?: string;
+  clock_out?: string;
+  status?: string | null;
+  absent_reason?: string;
+};
 
 export default function AttendanceRecords({
   admin,
@@ -30,6 +84,7 @@ export default function AttendanceRecords({
   });
   const [error, setError] = useState<string>("");
 
+  // 月の日付一覧
   const generateDatesForMonth = (month: string) => {
     const [year, monthIndex] = month.split("-").map(Number);
     const daysInMonth = new Date(year, monthIndex, 0).getDate();
@@ -38,6 +93,8 @@ export default function AttendanceRecords({
       return `${month}-${day}`;
     });
   };
+
+  // スタッフ一覧取得
   const fetchStaffList = async () => {
     try {
       const { data, error } = await supabase
@@ -49,7 +106,6 @@ export default function AttendanceRecords({
         setError("スタッフ情報の取得に失敗しました。");
         console.error("スタッフ情報取得エラー:", error);
       } else {
-        console.log("取得したスタッフリスト:", data); // デバッグ用
         setStaffList(data || []);
       }
     } catch (err) {
@@ -58,117 +114,227 @@ export default function AttendanceRecords({
     }
   };
 
-  //登録済みシフトデータ取得用の関数
+  // attendance_records を取得
+  const fetchAttendanceRecords = async (
+    staffId: string,
+    lastDay: number
+  ): Promise<AttendanceRecord[]> => {
+    const { data, error } = await supabase
+      .from("attendance_records")
+      .select("work_date, clock_in, clock_out, status, absent_reason")
+      .eq("user_id", staffId)
+      .gte("work_date", `${selectedMonth}-01`)
+      .lte("work_date", `${selectedMonth}-${lastDay}`)
+      .order("work_date", { ascending: true });
 
-  // ✅ インターフェース定義
-  interface WorkData {
-    location_name: string;
-  }
+    if (error) throw error;
+    return (data as AttendanceRecord[]) || [];
+  };
 
-  interface UserHourlyRate {
-    hourly_rate: number;
-    work_data: WorkData | WorkData[]; // 配列も考慮
-  }
-
-  interface AttendanceRecord {
-    clock_in?: string;
-    clock_out?: string;
-    status?: string;
-    absent_reason?: string;
-  }
-
-  interface ShiftRecord {
-    id: string;
-    date: string;
-    start_time?: string;
-    end_time?: string;
-    user_hourly_rates: UserHourlyRate | UserHourlyRate[];
-    attendance_records?: AttendanceRecord;
-  }
-
-  // ✅ 勤務データ取得 (勤務地情報含む)
-  const fetchAttendanceAndShiftData = async (staffId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("shifts")
-        .select(
-          `
-        id,
+  // shifts を取得
+  const fetchShiftRecords = async (
+    staffId: string,
+    lastDay: number
+  ): Promise<ShiftRecord[]> => {
+    const { data, error } = await supabase
+      .from("shifts")
+      .select(
+        `
         date,
         start_time,
         end_time,
         user_hourly_rates!fk_shifts_user_hourly_rate(
           hourly_rate,
           work_data!fk_user_hourly_rates_work_location(location_name)
-        ),
-        attendance_records!fk_attendance_records_shift(
-          id,
-          clock_in,
-          clock_out,
-          status,
-          absent_reason
         )
       `
-        )
-        .eq("user_id", staffId)
-        .gte("date", `${selectedMonth}-01`)
-        .lte(
-          "date",
-          `${selectedMonth}-${new Date(
-            Number(selectedMonth.split("-")[0]),
-            Number(selectedMonth.split("-")[1]),
-            0
-          ).getDate()}`
-        )
-        .order("date", { ascending: true });
+      )
+      .eq("user_id", staffId)
+      .gte("date", `${selectedMonth}-01`)
+      .lte("date", `${selectedMonth}-${lastDay}`)
+      .order("date", { ascending: true });
 
-      if (error) {
-        setError("データの取得に失敗しました。");
-        console.error("データ取得エラー:", error);
-      } else {
-        console.log("✅ 取得したデータ:", data);
+    if (error) throw error;
+    return (data as ShiftRecord[]) || [];
+  };
 
-        // ✅ attendanceMap をここに移動
-        const attendanceMap = (data || []).reduce((acc, record) => {
-          acc[record.date] = {
-            clock_in: record.attendance_records?.[0]?.clock_in ?? "-",
-            clock_out: record.attendance_records?.[0]?.clock_out ?? "-",
+  // 2つのデータを取得＆マージ
+  const fetchAttendanceAndShiftData = async (staffId: string) => {
+    try {
+      const [year, monthIndex] = selectedMonth.split("-").map(Number);
+      const lastDay = new Date(year, monthIndex, 0).getDate();
+
+      // 並列取得
+      const [attendanceData, shiftData] = await Promise.all([
+        fetchAttendanceRecords(staffId, lastDay),
+        fetchShiftRecords(staffId, lastDay),
+      ]);
+
+      // map化 (attendance_records)
+      const attendanceMap: Record<string, PartialAttendanceRecord> =
+        attendanceData.reduce((acc, rec) => {
+          acc[rec.work_date] = {
+            clock_in: rec.clock_in,
+            clock_out: rec.clock_out,
+            status: rec.status ?? null,
+            absent_reason: rec.absent_reason,
           };
           return acc;
-        }, {} as Record<string, any>);
+        }, {} as Record<string, PartialAttendanceRecord>);
 
-        console.log("✅ attendanceMap:", attendanceMap);
+      // map化 (shifts)
+      const shiftMap: Record<string, PartialShiftRecord> = shiftData.reduce(
+        (acc, rec) => {
+          let hr: number | string = "-";
+          let loc = "-";
 
-        setAttendanceAndShiftData(
-          (data as ShiftRecord[]).map((record) => {
-            const userHourlyRate = Array.isArray(record.user_hourly_rates)
-              ? record.user_hourly_rates[0]
-              : record.user_hourly_rates;
+          const userHourlyRates = rec.user_hourly_rates;
+          if (Array.isArray(userHourlyRates)) {
+            // 配列の場合
+            const first = userHourlyRates[0];
+            hr = first?.hourly_rate ?? "-";
 
-            const workLocation = Array.isArray(userHourlyRate?.work_data)
-              ? userHourlyRate.work_data[0]?.location_name ?? "-"
-              : (userHourlyRate?.work_data as WorkData)?.location_name ?? "-";
+            if (Array.isArray(first?.work_data)) {
+              loc = first.work_data[0]?.location_name ?? "-";
+            } else if (first?.work_data) {
+              loc = first.work_data.location_name ?? "-";
+            }
+          } else if (userHourlyRates) {
+            // オブジェクトの場合
+            hr = userHourlyRates.hourly_rate ?? "-";
 
-            const clockIn = record.attendance_records?.[0]?.clock_in ?? "-";
-            const clockOut = record.attendance_records?.[0]?.clock_out ?? "-";
+            if (Array.isArray(userHourlyRates.work_data)) {
+              loc = userHourlyRates.work_data[0]?.location_name ?? "-";
+            } else if (userHourlyRates.work_data) {
+              loc = userHourlyRates.work_data.location_name ?? "-";
+            }
+          }
 
-            return {
-              ...record,
-              hourly_rate: userHourlyRate?.hourly_rate ?? "-",
-              location_name: workLocation,
-              clock_in: clockIn,
-              clock_out: clockOut,
-            };
-          })
-        );
-      }
-    } catch (err) {
+          acc[rec.date] = {
+            start_time: rec.start_time || "-",
+            end_time: rec.end_time || "-",
+            hourly_rate: hr,
+            location_name: loc,
+          };
+          return acc;
+        },
+        {} as Record<string, PartialShiftRecord>
+      );
+
+      // 日付ごとにマージ
+      const allDates = generateDatesForMonth(selectedMonth);
+      const combinedData = allDates.map((date) => {
+        // 型アサーションで受け取り
+        const shiftRec = (shiftMap[date] as PartialShiftRecord) || {};
+        const attRec = (attendanceMap[date] as PartialAttendanceRecord) || {};
+
+        return {
+          date,
+          start_time: shiftRec.start_time || "-",
+          end_time: shiftRec.end_time || "-",
+          hourly_rate: shiftRec.hourly_rate || "-",
+          location_name: shiftRec.location_name || "-",
+          clock_in: attRec.clock_in || "-",
+          clock_out: attRec.clock_out || "-",
+          status: attRec.status || null,
+          absent_reason: attRec.absent_reason || "-",
+        };
+      });
+
+      setAttendanceAndShiftData(combinedData);
+      setError("");
+    } catch (err: any) {
       console.error("❌ データ取得エラー:", err);
       setError("データ取得中にエラーが発生しました。");
     }
   };
 
-  const markAsAbsent = async (date: string, reason: string) => {
+  // ステータス判定
+  const determineStatus = (record: any): string => {
+    if (record.status === "欠勤") return "欠勤";
+    if (!record.start_time || record.start_time === "-") {
+      return "-";
+    }
+    const shiftStart = new Date(`${record.date}T${record.start_time}`);
+    const now = new Date();
+
+    const clockIn =
+      record.clock_in && record.clock_in !== "-"
+        ? new Date(`${record.date}T${record.clock_in}`)
+        : null;
+    const clockOut =
+      record.clock_out && record.clock_out !== "-"
+        ? new Date(`${record.date}T${record.clock_out}`)
+        : null;
+
+    if (!clockIn) {
+      return now > shiftStart ? "遅刻" : "未出勤";
+    }
+    if (clockIn && !clockOut) {
+      return "出勤中";
+    }
+    if (clockIn && clockOut) {
+      return "退勤済み";
+    }
+    return "-";
+  };
+
+  // 15分単位で切り捨てる日給計算
+  const calculateDailyPay = (record: any): string => {
+    if (
+      !record.clock_in ||
+      !record.clock_out ||
+      record.clock_in === "-" ||
+      record.clock_out === "-" ||
+      !record.hourly_rate ||
+      isNaN(Number(record.hourly_rate)) ||
+      !record.start_time ||
+      !record.end_time ||
+      record.start_time === "-" ||
+      record.end_time === "-"
+    ) {
+      return "-";
+    }
+
+    // シフト開始・終了時刻
+    const shiftStart = new Date(`${record.date}T${record.start_time}`);
+    const shiftEnd = new Date(`${record.date}T${record.end_time}`);
+
+    // 打刻時刻
+    const rawClockIn = new Date(`${record.date}T${record.clock_in}`);
+    const rawClockOut = new Date(`${record.date}T${record.clock_out}`);
+
+    // 出勤打刻を15分単位で切り捨て
+    const flooredClockIn = floorToQuarter(rawClockIn);
+    // シフト開始より早ければシフト開始を実際の開始時刻とする
+    const actualStart =
+      flooredClockIn < shiftStart ? shiftStart : flooredClockIn;
+
+    // 退勤打刻を15分単位で切り捨て
+    const flooredClockOut = floorToQuarter(rawClockOut);
+    // シフト終了より後ならシフト終了を実際の終了時刻とする
+    const actualEnd = flooredClockOut > shiftEnd ? shiftEnd : flooredClockOut;
+
+    // 実働時間
+    const diffMs = actualEnd.getTime() - actualStart.getTime();
+    if (diffMs <= 0) return "-";
+
+    const diffHours = diffMs / (1000 * 60 * 60);
+    const numericRate = Number(record.hourly_rate);
+
+    // 15分単位で切り捨てた時間 × 時給
+    const pay = Math.floor(diffHours * numericRate);
+    return `${pay}円`;
+  };
+
+  // 欠勤登録
+  const markAsAbsentAndClearReason = async (date: string) => {
+    const reason = absentReasons[date];
+    if (!reason) {
+      alert("欠勤理由を入力してください。");
+      return;
+    }
+
     try {
       const { data: existingRecord, error: fetchError } = await supabase
         .from("attendance_records")
@@ -178,7 +344,7 @@ export default function AttendanceRecords({
         .single();
 
       if (fetchError && fetchError.code !== "PGRST116") {
-        console.error("欠勤チェックエラー:", fetchError);
+        console.error("❌ 欠勤チェックエラー:", fetchError);
         setError("欠勤登録中にエラーが発生しました。");
         return;
       }
@@ -186,14 +352,11 @@ export default function AttendanceRecords({
       if (existingRecord) {
         const { error: updateError } = await supabase
           .from("attendance_records")
-          .update({
-            status: "欠勤",
-            absent_reason: reason,
-          })
+          .update({ status: "欠勤", absent_reason: reason })
           .eq("id", existingRecord.id);
 
         if (updateError) {
-          console.error("欠勤更新エラー:", updateError);
+          console.error("❌ 欠勤更新エラー:", updateError);
           setError("欠勤登録中にエラーが発生しました。");
           return;
         }
@@ -208,20 +371,22 @@ export default function AttendanceRecords({
           });
 
         if (insertError) {
-          console.error("欠勤挿入エラー:", insertError);
+          console.error("❌ 欠勤挿入エラー:", insertError);
           setError("欠勤登録中にエラーが発生しました。");
           return;
         }
       }
 
-      console.log("欠勤登録成功: ", { date, reason }); // デバッグ用
-      fetchAttendanceAndShiftData(selectedStaffId!);
+      console.log("✅ 欠勤登録成功: ", { date, reason });
+      setAbsentReasons((prev) => ({ ...prev, [date]: "" }));
+      await fetchAttendanceAndShiftData(selectedStaffId!);
     } catch (err) {
-      console.error("欠勤登録エラー:", err);
+      console.error("❌ 欠勤登録エラー:", err);
       setError("欠勤登録中にエラーが発生しました。");
     }
   };
 
+  // 欠勤取消
   const cancelAbsent = async (date: string) => {
     try {
       const { error } = await supabase
@@ -231,120 +396,38 @@ export default function AttendanceRecords({
         .eq("work_date", date);
 
       if (error) {
-        console.error("欠勤取り消しエラー:", error);
+        console.error("❌ 欠勤取り消しエラー:", error);
         setError("欠勤取り消し中にエラーが発生しました。");
       } else {
-        fetchAttendanceAndShiftData(selectedStaffId!);
+        console.log("✅ 欠勤取消成功: ", date);
+        setAbsentReasons((prev) => ({ ...prev, [date]: "" }));
+        await fetchAttendanceAndShiftData(selectedStaffId!);
       }
     } catch (err) {
-      console.error("欠勤取り消しエラー:", err);
+      console.error("❌ 欠勤取り消しエラー:", err);
       setError("欠勤取り消し中にエラーが発生しました。");
     }
   };
 
-  const determineStatus = (record: any): string => {
-    const attendance = record.attendance_records || {};
-    const shiftStartTime = record.start_time
-      ? new Date(`${record.date}T${record.start_time}`)
-      : null;
-    const clockInTime = attendance.clock_in
-      ? new Date(`${record.date}T${attendance.clock_in}`)
-      : null;
-    const now = new Date();
-
-    // シフトが未登録の場合
-    if (!shiftStartTime && !record.end_time) {
-      return "-";
-    }
-
-    // 欠勤の場合
-    if (attendance.status === "欠勤") {
-      return "欠勤";
-    }
-
-    // 出勤打刻がない場合でシフト開始時間を過ぎている場合
-    if (!clockInTime && shiftStartTime && now > shiftStartTime) {
-      return "遅刻";
-    }
-
-    // 出勤打刻があるが遅刻している場合
-    if (clockInTime && shiftStartTime && clockInTime > shiftStartTime) {
-      return "遅刻";
-    }
-
-    // 出勤済みの場合
-    if (clockInTime) {
-      return "出勤";
-    }
-
-    // 未出勤の場合
-    return "未出勤";
-  };
-
-  const calculateDailyPay = (record: any): string => {
-    const attendance = record.attendance_records || {};
-    const shiftStart = record.start_time
-      ? new Date(`1970-01-01T${record.start_time}`)
-      : null;
-    const shiftEnd = record.end_time
-      ? new Date(`1970-01-01T${record.end_time}`)
-      : null;
-    const hourlyRate = record.user_hourly_rates?.hourly_rate;
-
-    if (
-      !attendance.clock_in ||
-      !attendance.clock_out ||
-      !shiftStart ||
-      !shiftEnd ||
-      !hourlyRate
-    ) {
-      return "-";
-    }
-
-    const clockIn = new Date(`1970-01-01T${attendance.clock_in}`);
-    const clockOut = new Date(`1970-01-01T${attendance.clock_out}`);
-
-    const actualStart = clockIn > shiftStart ? clockIn : shiftStart;
-    const actualEnd = clockOut < shiftEnd ? clockOut : shiftEnd;
-
-    const workedMilliseconds = actualEnd.getTime() - actualStart.getTime();
-    if (workedMilliseconds <= 0) return "-";
-
-    const workedHours = workedMilliseconds / (1000 * 60 * 60);
-    return `${Math.floor(workedHours * hourlyRate)}円`;
-  };
-
+  // Excel 出力
   const exportToExcel = () => {
     if (!selectedStaffId) {
       setError("スタッフを選択してください。");
       return;
     }
 
-    // 選択されたスタッフ情報を取得
     const staff = staffList.find(
       (s) => String(s.id) === String(selectedStaffId)
     );
     if (!staff) {
       setError("スタッフ情報を取得できませんでした。");
-      console.error(
-        "スタッフ情報が見つかりません。選択されたID:",
-        selectedStaffId
-      );
-      console.error("スタッフリスト:", staffList);
       return;
     }
 
     const staffName = staff.name || "スタッフ";
-
-    // 対象年月のフォーマット
-    const year = selectedMonth.split("-")[0];
-    const month = selectedMonth.split("-")[1];
+    const [year, month] = selectedMonth.split("-");
     const formattedMonth = `${year}年${month}月`;
-
-    // ファイル名を設定
     const fileName = `${formattedMonth}-${staffName}-勤怠管理表.xlsx`;
-
-    console.log("生成されたファイル名:", fileName); // デバッグ用
 
     const header = [
       "日付",
@@ -359,65 +442,52 @@ export default function AttendanceRecords({
       "欠勤理由",
     ];
 
-    // 全日分のデータ生成
     const dates = generateDatesForMonth(selectedMonth);
     const data = dates.map((date) => {
       const record =
         attendanceAndShiftData.find((item) => item.date === date) || {};
-      const attendance = record.attendance_records || {};
+
+      const hourlyRateCell =
+        record.hourly_rate && !isNaN(Number(record.hourly_rate))
+          ? `${record.hourly_rate}円`
+          : "-";
+
       return [
-        date, // 日付
-        record.start_time || "-", // シフト開始
-        record.end_time || "-", // シフト終了
-        record.work_data?.work_location || "-", // 勤務地
-        record.hourly_rate ? `${record.hourly_rate}円` : "-", // 時給
-        attendance.clock_in ? formatToJapanTime(attendance.clock_in) : "-", // 出勤打刻
-        attendance.clock_out ? formatToJapanTime(attendance.clock_out) : "-", // 退勤打刻
-        determineStatus(record), // ステータス
-        calculateDailyPay(record), // 日給
-        attendance.absent_reason || "-", // 欠勤理由
+        date,
+        record.start_time || "-",
+        record.end_time || "-",
+        record.location_name || "-",
+        hourlyRateCell,
+        record.clock_in && record.clock_in !== "-"
+          ? formatToJapanTime(record.clock_in)
+          : "-",
+        record.clock_out && record.clock_out !== "-"
+          ? formatToJapanTime(record.clock_out)
+          : "-",
+        determineStatus(record),
+        calculateDailyPay(record),
+        record.absent_reason || "-",
       ];
     });
 
-    // シート作成
     const worksheet = XLSX.utils.aoa_to_sheet([header, ...data]);
-
-    // 列幅調整
     worksheet["!cols"] = header.map(() => ({ wch: 15 }));
-
-    // ワークブック作成
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "勤怠データ");
-
-    // ファイル出力
     XLSX.writeFile(workbook, fileName);
   };
 
+  // マウント時にスタッフ一覧
   useEffect(() => {
     fetchStaffList();
   }, []);
 
+  // スタッフ or 月が変わるたびに再取得
   useEffect(() => {
     if (selectedStaffId) {
       fetchAttendanceAndShiftData(selectedStaffId);
     }
   }, [selectedStaffId, selectedMonth]);
-
-  const handleReasonChange = (date: string, value: string) => {
-    setAbsentReasons((prev) => ({ ...prev, [date]: value }));
-  };
-
-  const markAsAbsentAndClearReason = async (date: string) => {
-    const reason = absentReasons[date];
-    if (!reason) {
-      alert("欠勤理由を入力してください。");
-      return;
-    }
-
-    await markAsAbsent(date, reason);
-
-    setAbsentReasons((prev) => ({ ...prev, [date]: "" })); // 入力欄をクリア
-  };
 
   return (
     <AdminLayout adminName={admin.name}>
@@ -439,12 +509,13 @@ export default function AttendanceRecords({
           <h2 className="font-bold text-sm md:text-base">欠勤登録について</h2>
           <ul className="list-disc pl-5 text-xs md:text-sm">
             <li>
-              欠勤ボタンを押下するには先に欠勤理由を入力してください（例：病欠 ,
+              欠勤ボタンを押下するには先に欠勤理由を入力してください（例：病欠,
               無断欠勤...）
             </li>
           </ul>
         </div>
 
+        {/* スタッフ選択 */}
         <div className="mb-6">
           <label className="block font-bold text-sm md:text-base mb-2">
             スタッフを選択
@@ -465,6 +536,7 @@ export default function AttendanceRecords({
           </select>
         </div>
 
+        {/* 月選択 */}
         <div className="mb-6">
           <label className="block font-bold text-sm md:text-base mb-2">
             月を選択
@@ -477,6 +549,7 @@ export default function AttendanceRecords({
           />
         </div>
 
+        {/* Excel 出力 */}
         <button
           onClick={exportToExcel}
           className="bg-green-500 text-white px-2 py-1 rounded text-sm md:text-base hover:bg-green-600 mb-4"
@@ -509,38 +582,39 @@ export default function AttendanceRecords({
                 </tr>
               </thead>
               <tbody>
-                {generateDatesForMonth(selectedMonth).map((date) => {
-                  const record =
-                    attendanceAndShiftData.find((item) => item.date === date) ||
-                    {};
-                  const shift = record || {};
-                  const attendance = record.attendance_records || {};
-                  const workData = shift.work_data || {};
+                {attendanceAndShiftData.map((record: any) => {
                   const status = determineStatus(record);
                   const isAbsent = status === "欠勤";
 
+                  // 時給セル
+                  const hourlyRateCell =
+                    record.hourly_rate && !isNaN(Number(record.hourly_rate))
+                      ? `${record.hourly_rate}円`
+                      : "-";
+
                   return (
-                    <tr key={date} className={isAbsent ? "bg-gray-200" : ""}>
-                      <td className="border px-2 py-1">{date}</td>
+                    <tr
+                      key={record.date}
+                      className={isAbsent ? "bg-gray-300" : ""}
+                    >
+                      <td className="border px-2 py-1">{record.date}</td>
                       <td className="border px-2 py-1">
-                        {shift.start_time || "-"}
+                        {record.start_time || "-"}
                       </td>
                       <td className="border px-2 py-1">
-                        {shift.end_time || "-"}
+                        {record.end_time || "-"}
                       </td>
                       <td className="border px-2 py-1">
                         {record.location_name || "-"}
                       </td>
+                      <td className="border px-2 py-1">{hourlyRateCell}</td>
                       <td className="border px-2 py-1">
-                        {record.hourly_rate ? `${record.hourly_rate}円` : "-"}
-                      </td>
-                      <td className="border border-gray-300 px-4 py-2 text-center">
-                        {record?.clock_in && record?.clock_in !== "-"
+                        {record.clock_in !== "-"
                           ? formatToJapanTime(record.clock_in)
                           : "-"}
                       </td>
-                      <td className="border border-gray-300 px-4 py-2 text-center">
-                        {record?.clock_out && record?.clock_out !== "-"
+                      <td className="border px-2 py-1">
+                        {record.clock_out !== "-"
                           ? formatToJapanTime(record.clock_out)
                           : "-"}
                       </td>
@@ -549,41 +623,44 @@ export default function AttendanceRecords({
                         {calculateDailyPay(record)}
                       </td>
                       <td className="border px-2 py-1">
-                        {shift.start_time || shift.end_time ? (
-                          attendance.absent_reason || (
-                            <input
-                              type="text"
-                              placeholder="欠勤理由を入力"
-                              value={absentReasons[date] || ""}
-                              onChange={(e) =>
-                                handleReasonChange(date, e.target.value)
-                              }
-                              className="border px-2 py-1"
-                            />
-                          )
+                        {isAbsent ? (
+                          record.absent_reason || "-"
                         ) : (
-                          <span>-</span>
+                          <input
+                            type="text"
+                            placeholder="欠勤理由を入力"
+                            value={absentReasons[record.date] || ""}
+                            onChange={(e) =>
+                              setAbsentReasons((prev) => ({
+                                ...prev,
+                                [record.date]: e.target.value,
+                              }))
+                            }
+                            className="border px-2 py-1"
+                          />
                         )}
                       </td>
                       <td className="border px-2 py-1 text-center">
-                        {!isAbsent ? (
+                        {isAbsent ? (
                           <button
-                            onClick={() => markAsAbsentAndClearReason(date)}
-                            className={`bg-red-500 text-white px-2 py-1 rounded text-xs md:text-sm hover:bg-red-600 ${
-                              !absentReasons[date]
-                                ? "opacity-50 cursor-not-allowed"
-                                : ""
-                            }`}
-                            disabled={!absentReasons[date]}
-                          >
-                            欠勤
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => cancelAbsent(date)}
+                            onClick={() => cancelAbsent(record.date)}
                             className="bg-green-500 text-white px-2 py-1 rounded text-xs md:text-sm hover:bg-green-600"
                           >
                             欠勤取消
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() =>
+                              markAsAbsentAndClearReason(record.date)
+                            }
+                            className={`bg-red-500 text-white px-2 py-1 rounded text-xs md:text-sm hover:bg-red-600 ${
+                              !absentReasons[record.date]
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
+                            disabled={!absentReasons[record.date]}
+                          >
+                            欠勤
                           </button>
                         )}
                       </td>
