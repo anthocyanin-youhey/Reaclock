@@ -1,3 +1,5 @@
+// reaclock\src\pages\admin\workData\[id].tsx
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import AdminLayout from "../../../components/AdminLayout";
@@ -14,6 +16,10 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [hourlyRate, setHourlyRate] = useState("");
   const [existingRates, setExistingRates] = useState<any[]>([]);
+
+  // ▼▼▼ 時給編集用ステート ▼▼▼
+  const [editingRateId, setEditingRateId] = useState<number | null>(null);
+  const [editingHourlyRate, setEditingHourlyRate] = useState<string>("");
 
   useEffect(() => {
     if (id) {
@@ -65,7 +71,7 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
     }
   };
 
-  // 勤務データ登録
+  // ▼▼▼ 新規の時給データ登録 ▼▼▼
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -93,7 +99,7 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
     }
   };
 
-  // ✅ 勤務データ（時給）を削除する関数
+  // ▼▼▼ 時給データを削除 ▼▼▼
   const handleDeleteHourlyRate = async (rateId: number) => {
     if (!confirm("この勤務データを削除しますか？")) return;
 
@@ -108,10 +114,48 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
         console.error("削除エラー:", error);
       } else {
         alert("勤務データが削除されました！");
-        fetchUserHourlyRates(); // 削除後に一覧を更新
+        fetchUserHourlyRates(); // 更新
       }
     } catch (err) {
       console.error("削除エラー:", err);
+      alert("ネットワークエラーが発生しました。");
+    }
+  };
+
+  // ▼▼▼ 時給編集モードに切り替え ▼▼▼
+  const startEditingHourlyRate = (rateId: number, currentRate: number) => {
+    setEditingRateId(rateId);
+    setEditingHourlyRate(String(currentRate));
+  };
+
+  // ▼▼▼ 時給編集キャンセル ▼▼▼
+  const cancelEditingHourlyRate = () => {
+    setEditingRateId(null);
+    setEditingHourlyRate("");
+  };
+
+  // ▼▼▼ 時給更新処理 ▼▼▼
+  const handleSaveHourlyRate = async (rateId: number) => {
+    if (!editingHourlyRate) {
+      alert("時給を入力してください。");
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from("user_hourly_rates")
+        .update({ hourly_rate: parseFloat(editingHourlyRate) })
+        .eq("id", rateId);
+
+      if (error) {
+        alert("時給更新に失敗しました。");
+        console.error("時給更新エラー:", error);
+      } else {
+        alert("時給が更新されました！");
+        fetchUserHourlyRates(); // 更新
+        cancelEditingHourlyRate();
+      }
+    } catch (err) {
+      console.error("ネットワークエラー:", err);
       alert("ネットワークエラーが発生しました。");
     }
   };
@@ -162,7 +206,7 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
           </button>
         </form>
 
-        {/* 既存の勤務地ごとの時給リスト */}
+        {/* 既存の勤務データ一覧 */}
         <h2 className="text-xl font-bold mt-10 mb-4">既存の勤務データ</h2>
         {existingRates.length > 0 ? (
           <ul>
@@ -170,22 +214,66 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
               const location = workLocations.find(
                 (loc) => loc.id === rate.work_location_id
               );
+              // editingRateId と比較して、編集中かどうかを判定
+              const isEditing = editingRateId === rate.id;
+
               return (
                 <li
                   key={rate.id}
                   className="border-b py-2 flex justify-between items-center"
                 >
-                  <span>
-                    {location ? location.location_name : "不明な勤務地"}:
-                    <span className="ml-2">{rate.hourly_rate} 円</span>
-                  </span>
-                  {/* ✅ 削除ボタンを追加 */}
-                  <button
-                    onClick={() => handleDeleteHourlyRate(rate.id)}
-                    className="bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600"
-                  >
-                    削除
-                  </button>
+                  <div>
+                    {/* 勤務地名 */}
+                    {location ? location.location_name : "不明な勤務地"}:{" "}
+                    {/* 時給表示 or 編集入力 */}
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        value={editingHourlyRate}
+                        onChange={(e) => setEditingHourlyRate(e.target.value)}
+                        className="border px-2 py-1 rounded"
+                      />
+                    ) : (
+                      <span className="ml-2">{rate.hourly_rate} 円</span>
+                    )}
+                  </div>
+
+                  {/* 操作ボタン群 */}
+                  <div className="flex space-x-2">
+                    {isEditing ? (
+                      <>
+                        <button
+                          onClick={() => handleSaveHourlyRate(rate.id)}
+                          className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
+                        >
+                          保存
+                        </button>
+                        <button
+                          onClick={cancelEditingHourlyRate}
+                          className="bg-gray-400 text-white px-3 py-1 rounded hover:bg-gray-500"
+                        >
+                          キャンセル
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() =>
+                            startEditingHourlyRate(rate.id, rate.hourly_rate)
+                          }
+                          className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={() => handleDeleteHourlyRate(rate.id)}
+                          className="bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600"
+                        >
+                          削除
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </li>
               );
             })}

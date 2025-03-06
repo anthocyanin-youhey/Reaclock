@@ -1,3 +1,5 @@
+// reaclock\src\components\AdminLayout.tsx
+
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useState } from "react";
@@ -8,20 +10,18 @@ export default function AdminLayout({
   adminName,
 }: {
   children: React.ReactNode;
-  adminName: string; // 必須に変更
+  adminName: string;
 }) {
   const router = useRouter();
   const [logoutMessage, setLogoutMessage] = useState<string>("");
   const [menuOpen, setMenuOpen] = useState(false); // ハンバーガーメニューの開閉状態
 
-  // 未対応遅刻件数を取得するコンテキスト
   const { lateCount } = useLateCount();
 
   // ログアウト処理
   const handleLogout = async () => {
     try {
       const response = await fetch("/api/admin/logout", { method: "POST" });
-
       if (response.ok) {
         setLogoutMessage("ログアウトしました！");
         setTimeout(() => {
@@ -37,16 +37,20 @@ export default function AdminLayout({
   };
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <header className="bg-blue-500 text-white relative">
+    <div className="flex flex-col min-h-screen relative">
+      <header className="bg-blue-500 text-white relative z-50">
         <div className="container mx-auto flex justify-between items-center py-4 px-6">
-          {/* タイトルと管理者名 */}
+          {/* タイトルと管理者名：管理者ダッシュボードをクリックでホームへ */}
           <div>
-            <h1 className="text-xl font-bold">管理者ダッシュボード</h1>
+            <Link href="/admin/dashboard" legacyBehavior>
+              <a className="text-xl font-bold hover:opacity-80">
+                管理者ダッシュボード
+              </a>
+            </Link>
             <p className="text-sm mt-1">{adminName} さんでログイン中</p>
           </div>
 
-          {/* ナビゲーション（デスクトップ） */}
+          {/* デスクトップ用ナビゲーション */}
           <nav className="hidden md:flex space-x-4 items-center">
             <Link href="/admin/dashboard">
               <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
@@ -85,7 +89,7 @@ export default function AdminLayout({
             </Link>
           </nav>
 
-          {/* ログイン中の管理者名とログアウトボタン（デスクトップ） */}
+          {/* デスクトップ用ログアウトボタン */}
           <div className="hidden md:flex items-center space-x-4">
             <button
               onClick={handleLogout}
@@ -95,10 +99,10 @@ export default function AdminLayout({
             </button>
           </div>
 
-          {/* ハンバーガーメニューボタン */}
+          {/* ハンバーガーメニューボタン（モバイル用） */}
           <button
-            className="block md:hidden text-white focus:outline-none z-50"
-            onClick={() => setMenuOpen(!menuOpen)}
+            className="md:hidden text-white focus:outline-none z-50"
+            onClick={() => setMenuOpen(true)}
           >
             <svg
               className="w-6 h-6"
@@ -111,14 +115,111 @@ export default function AdminLayout({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d={
-                  menuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"
-                }
+                d="M4 6h16M4 12h16M4 18h16"
               />
             </svg>
           </button>
         </div>
       </header>
+
+      {/* モバイル用オーバーレイ */}
+      {menuOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40"
+          onClick={() => setMenuOpen(false)}
+        ></div>
+      )}
+
+      {/* モバイル用サイドバー（右からスライドイン） */}
+      <div
+        className={`fixed top-0 right-0 w-64 h-full bg-blue-500 text-white z-50 transform transition-transform duration-300 ${
+          menuOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="p-4 flex flex-col space-y-4">
+          <button
+            className="self-end focus:outline-none"
+            onClick={() => setMenuOpen(false)}
+          >
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+          <Link href="/admin/dashboard">
+            <span
+              onClick={() => setMenuOpen(false)}
+              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
+            >
+              ホーム
+            </span>
+          </Link>
+          <Link href="/admin/createStaff">
+            <span
+              onClick={() => setMenuOpen(false)}
+              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
+            >
+              スタッフ新規登録
+            </span>
+          </Link>
+          <Link href="/admin/staffList">
+            <span
+              onClick={() => setMenuOpen(false)}
+              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
+            >
+              スタッフ一覧
+            </span>
+          </Link>
+          <Link href="/admin/attendanceRecords">
+            <span
+              onClick={() => setMenuOpen(false)}
+              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
+            >
+              打刻履歴
+            </span>
+          </Link>
+          <Link href="/admin/attendanceStatus">
+            <span
+              onClick={() => setMenuOpen(false)}
+              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer flex items-center"
+            >
+              遅刻チェック
+              {lateCount > 0 && (
+                <span className="ml-2 text-yellow-300 font-bold">
+                  ⚠ 未対応{lateCount}件
+                </span>
+              )}
+            </span>
+          </Link>
+          <Link href="/admin/workLocations">
+            <span
+              onClick={() => setMenuOpen(false)}
+              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
+            >
+              勤務地情報登録
+            </span>
+          </Link>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              handleLogout();
+            }}
+            className="block w-full text-left py-2 px-2 mt-2 rounded border border-red-400 bg-red-500 text-white text-sm hover:bg-white hover:text-red-500 transition-all"
+          >
+            ログアウト
+          </button>
+        </div>
+      </div>
 
       {logoutMessage && (
         <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded shadow">
