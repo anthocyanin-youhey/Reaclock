@@ -53,27 +53,27 @@ export default function AdminLayout({
           {/* デスクトップ用ナビゲーション */}
           <nav className="hidden md:flex space-x-4 items-center">
             <Link href="/admin/dashboard">
-              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
+              <span className="py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
                 ホーム
               </span>
             </Link>
             <Link href="/admin/createStaff">
-              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
+              <span className="py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
                 スタッフ新規登録
               </span>
             </Link>
             <Link href="/admin/staffList">
-              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
+              <span className="py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
                 スタッフ一覧
               </span>
             </Link>
             <Link href="/admin/attendanceRecords">
-              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
+              <span className="py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
                 打刻履歴
               </span>
             </Link>
             <Link href="/admin/attendanceStatus">
-              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer flex items-center">
+              <span className="py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer flex items-center">
                 遅刻チェック
                 {lateCount > 0 && (
                   <span className="ml-2 text-yellow-500 font-bold">
@@ -83,7 +83,7 @@ export default function AdminLayout({
               </span>
             </Link>
             <Link href="/admin/workLocations">
-              <span className="block py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
+              <span className="py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
                 勤務地情報登録
               </span>
             </Link>
@@ -159,7 +159,7 @@ export default function AdminLayout({
           <Link href="/admin/dashboard">
             <span
               onClick={() => setMenuOpen(false)}
-              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
+              className="py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
             >
               ホーム
             </span>
@@ -167,7 +167,7 @@ export default function AdminLayout({
           <Link href="/admin/createStaff">
             <span
               onClick={() => setMenuOpen(false)}
-              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
+              className="py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
             >
               スタッフ新規登録
             </span>
@@ -175,7 +175,7 @@ export default function AdminLayout({
           <Link href="/admin/staffList">
             <span
               onClick={() => setMenuOpen(false)}
-              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
+              className="py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
             >
               スタッフ一覧
             </span>
@@ -183,7 +183,7 @@ export default function AdminLayout({
           <Link href="/admin/attendanceRecords">
             <span
               onClick={() => setMenuOpen(false)}
-              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
+              className="py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
             >
               打刻履歴
             </span>
@@ -191,7 +191,7 @@ export default function AdminLayout({
           <Link href="/admin/attendanceStatus">
             <span
               onClick={() => setMenuOpen(false)}
-              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer flex items-center"
+              className="py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer flex items-center"
             >
               遅刻チェック
               {lateCount > 0 && (
@@ -204,7 +204,7 @@ export default function AdminLayout({
           <Link href="/admin/workLocations">
             <span
               onClick={() => setMenuOpen(false)}
-              className="block py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
+              className="py-2 px-2 rounded text-sm hover:bg-blue-600 cursor-pointer"
             >
               勤務地情報登録
             </span>
