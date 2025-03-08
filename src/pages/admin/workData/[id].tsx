@@ -17,7 +17,7 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
   const [hourlyRate, setHourlyRate] = useState("");
   const [existingRates, setExistingRates] = useState<any[]>([]);
 
-  // ▼▼▼ 時給編集用ステート ▼▼▼
+  // 時給編集用ステート
   const [editingRateId, setEditingRateId] = useState<number | null>(null);
   const [editingHourlyRate, setEditingHourlyRate] = useState<string>("");
 
@@ -46,9 +46,10 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
 
   // 勤務地情報取得
   const fetchWorkLocations = async () => {
+    // is_deleted も取得
     const { data, error } = await supabase
       .from("work_data")
-      .select("id, location_name");
+      .select("id, location_name, is_deleted");
 
     if (error) {
       console.error("勤務地情報取得エラー:", error);
@@ -71,7 +72,7 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
     }
   };
 
-  // ▼▼▼ 新規の時給データ登録 ▼▼▼
+  // 新規の時給データ登録
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -99,7 +100,7 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
     }
   };
 
-  // ▼▼▼ 時給データを削除 ▼▼▼
+  // 勤務データ（時給）を削除
   const handleDeleteHourlyRate = async (rateId: number) => {
     if (!confirm("この勤務データを削除しますか？")) return;
 
@@ -122,19 +123,19 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
     }
   };
 
-  // ▼▼▼ 時給編集モードに切り替え ▼▼▼
+  // 時給編集モードに切り替え
   const startEditingHourlyRate = (rateId: number, currentRate: number) => {
     setEditingRateId(rateId);
     setEditingHourlyRate(String(currentRate));
   };
 
-  // ▼▼▼ 時給編集キャンセル ▼▼▼
+  // 時給編集キャンセル
   const cancelEditingHourlyRate = () => {
     setEditingRateId(null);
     setEditingHourlyRate("");
   };
 
-  // ▼▼▼ 時給更新処理 ▼▼▼
+  // 時給更新処理
   const handleSaveHourlyRate = async (rateId: number) => {
     if (!editingHourlyRate) {
       alert("時給を入力してください。");
@@ -151,7 +152,7 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
         console.error("時給更新エラー:", error);
       } else {
         alert("時給が更新されました！");
-        fetchUserHourlyRates(); // 更新
+        fetchUserHourlyRates();
         cancelEditingHourlyRate();
       }
     } catch (err) {
@@ -171,6 +172,7 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
           </p>
         )}
 
+        {/* 新規時給データ登録フォーム */}
         <form onSubmit={handleSubmit} className="max-w-lg mx-auto">
           <div className="mb-4">
             <label className="block font-bold mb-2">勤務地</label>
@@ -183,7 +185,10 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
               <option value="">勤務地を選択</option>
               {workLocations.map((loc) => (
                 <option key={loc.id} value={loc.id}>
-                  {loc.location_name}
+                  {/* 論理削除されている場合は "(削除済み)" を付加 */}
+                  {loc.is_deleted
+                    ? `${loc.location_name}（削除済み）`
+                    : loc.location_name}
                 </option>
               ))}
             </select>
@@ -214,7 +219,6 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
               const location = workLocations.find(
                 (loc) => loc.id === rate.work_location_id
               );
-              // editingRateId と比較して、編集中かどうかを判定
               const isEditing = editingRateId === rate.id;
 
               return (
@@ -223,22 +227,24 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
                   className="border-b py-2 flex justify-between items-center"
                 >
                   <div>
-                    {/* 勤務地名 */}
-                    {location ? location.location_name : "不明な勤務地"}:{" "}
-                    {/* 時給表示 or 編集入力 */}
+                    {/* 論理削除された勤務地なら "(削除済み)" と表示 */}
+                    {location
+                      ? location.is_deleted
+                        ? `${location.location_name}（削除済み）`
+                        : location.location_name
+                      : "不明な勤務地"}
+                    ：
                     {isEditing ? (
                       <input
                         type="number"
                         value={editingHourlyRate}
                         onChange={(e) => setEditingHourlyRate(e.target.value)}
-                        className="border px-2 py-1 rounded"
+                        className="border px-2 py-1 rounded ml-2"
                       />
                     ) : (
                       <span className="ml-2">{rate.hourly_rate} 円</span>
                     )}
                   </div>
-
-                  {/* 操作ボタン群 */}
                   <div className="flex space-x-2">
                     {isEditing ? (
                       <>

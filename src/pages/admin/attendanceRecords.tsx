@@ -21,10 +21,9 @@ function floorToQuarter(dateObj: Date): Date {
   return new Date(year, month, date, hours, flooredMinutes, 0, 0);
 }
 
-// -- 型定義例 --
-
 interface WorkData {
   location_name?: string;
+  is_deleted?: boolean; // 論理削除判定
 }
 
 interface UserHourlyRate {
@@ -47,12 +46,12 @@ interface AttendanceRecord {
   absent_reason?: string;
 }
 
-// **shiftMap や attendanceMap に入る要素は「ないかもしれない」ので Partial<> で受け取る
 type PartialShiftRecord = {
   start_time?: string;
   end_time?: string;
   hourly_rate?: number | string;
   location_name?: string;
+  is_deleted?: boolean;
 };
 
 type PartialAttendanceRecord = {
@@ -84,7 +83,6 @@ export default function AttendanceRecords({
   });
   const [error, setError] = useState<string>("");
 
-  // 月の日付一覧
   const generateDatesForMonth = (month: string) => {
     const [year, monthIndex] = month.split("-").map(Number);
     const daysInMonth = new Date(year, monthIndex, 0).getDate();
@@ -145,7 +143,10 @@ export default function AttendanceRecords({
         end_time,
         user_hourly_rates!fk_shifts_user_hourly_rate(
           hourly_rate,
-          work_data!fk_user_hourly_rates_work_location(location_name)
+          work_data!fk_user_hourly_rates_work_location(
+            location_name,
+            is_deleted
+          )
         )
       `
       )
@@ -164,7 +165,6 @@ export default function AttendanceRecords({
       const [year, monthIndex] = selectedMonth.split("-").map(Number);
       const lastDay = new Date(year, monthIndex, 0).getDate();
 
-      // 並列取得
       const [attendanceData, shiftData] = await Promise.all([
         fetchAttendanceRecords(staffId, lastDay),
         fetchShiftRecords(staffId, lastDay),
@@ -187,6 +187,7 @@ export default function AttendanceRecords({
         (acc, rec) => {
           let hr: number | string = "-";
           let loc = "-";
+          let deleted = false;
 
           const userHourlyRates = rec.user_hourly_rates;
           if (Array.isArray(userHourlyRates)) {
@@ -195,18 +196,38 @@ export default function AttendanceRecords({
             hr = first?.hourly_rate ?? "-";
 
             if (Array.isArray(first?.work_data)) {
-              loc = first.work_data[0]?.location_name ?? "-";
+              const wd = first.work_data[0];
+              if (wd) {
+                loc = wd.is_deleted
+                  ? `${wd.location_name}（削除済み）`
+                  : wd.location_name ?? "-";
+                deleted = !!wd.is_deleted;
+              }
             } else if (first?.work_data) {
-              loc = first.work_data.location_name ?? "-";
+              const wd = first.work_data;
+              loc = wd.is_deleted
+                ? `${wd.location_name}（削除済み）`
+                : wd.location_name ?? "-";
+              deleted = !!wd.is_deleted;
             }
           } else if (userHourlyRates) {
             // オブジェクトの場合
             hr = userHourlyRates.hourly_rate ?? "-";
 
             if (Array.isArray(userHourlyRates.work_data)) {
-              loc = userHourlyRates.work_data[0]?.location_name ?? "-";
+              const wd = userHourlyRates.work_data[0];
+              if (wd) {
+                loc = wd.is_deleted
+                  ? `${wd.location_name}（削除済み）`
+                  : wd.location_name ?? "-";
+                deleted = !!wd.is_deleted;
+              }
             } else if (userHourlyRates.work_data) {
-              loc = userHourlyRates.work_data.location_name ?? "-";
+              const wd = userHourlyRates.work_data;
+              loc = wd.is_deleted
+                ? `${wd.location_name}（削除済み）`
+                : wd.location_name ?? "-";
+              deleted = !!wd.is_deleted;
             }
           }
 
@@ -215,6 +236,7 @@ export default function AttendanceRecords({
             end_time: rec.end_time || "-",
             hourly_rate: hr,
             location_name: loc,
+            is_deleted: deleted,
           };
           return acc;
         },
@@ -224,9 +246,8 @@ export default function AttendanceRecords({
       // 日付ごとにマージ
       const allDates = generateDatesForMonth(selectedMonth);
       const combinedData = allDates.map((date) => {
-        // 型アサーションで受け取り
-        const shiftRec = (shiftMap[date] as PartialShiftRecord) || {};
-        const attRec = (attendanceMap[date] as PartialAttendanceRecord) || {};
+        const shiftRec = shiftMap[date] || {};
+        const attRec = attendanceMap[date] || {};
 
         return {
           date,
@@ -296,33 +317,24 @@ export default function AttendanceRecords({
       return "-";
     }
 
-    // シフト開始・終了時刻
     const shiftStart = new Date(`${record.date}T${record.start_time}`);
     const shiftEnd = new Date(`${record.date}T${record.end_time}`);
-
-    // 打刻時刻
     const rawClockIn = new Date(`${record.date}T${record.clock_in}`);
     const rawClockOut = new Date(`${record.date}T${record.clock_out}`);
 
-    // 出勤打刻を15分単位で切り捨て
     const flooredClockIn = floorToQuarter(rawClockIn);
-    // シフト開始より早ければシフト開始を実際の開始時刻とする
     const actualStart =
       flooredClockIn < shiftStart ? shiftStart : flooredClockIn;
 
-    // 退勤打刻を15分単位で切り捨て
     const flooredClockOut = floorToQuarter(rawClockOut);
-    // シフト終了より後ならシフト終了を実際の終了時刻とする
     const actualEnd = flooredClockOut > shiftEnd ? shiftEnd : flooredClockOut;
 
-    // 実働時間
     const diffMs = actualEnd.getTime() - actualStart.getTime();
     if (diffMs <= 0) return "-";
 
     const diffHours = diffMs / (1000 * 60 * 60);
     const numericRate = Number(record.hourly_rate);
 
-    // 15分単位で切り捨てた時間 × 時給
     const pay = Math.floor(diffHours * numericRate);
     return `${pay}円`;
   };
@@ -477,12 +489,10 @@ export default function AttendanceRecords({
     XLSX.writeFile(workbook, fileName);
   };
 
-  // マウント時にスタッフ一覧
   useEffect(() => {
     fetchStaffList();
   }, []);
 
-  // スタッフ or 月が変わるたびに再取得
   useEffect(() => {
     if (selectedStaffId) {
       fetchAttendanceAndShiftData(selectedStaffId);

@@ -22,7 +22,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
   const [editingStartTime, setEditingStartTime] = useState<string>("");
   const [editingEndTime, setEditingEndTime] = useState<string>("");
 
-  // 既存の勤務地を取得
+  // 1) 既存の勤務地を取得
   useEffect(() => {
     const fetchLocations = async () => {
       const { data, error } = await supabase.from("work_data").select("*");
@@ -36,7 +36,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
     fetchLocations();
   }, []);
 
-  // 新規勤務地を登録
+  // 2) 新規勤務地を登録
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -74,36 +74,51 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
     }
   };
 
-  // 勤務地データの削除処理
+  /**
+   * 3) 勤務地データの削除処理（論理削除 or 物理削除）
+   */
   const handleDelete = async (workDataId: number) => {
     if (!confirm("この勤務地を削除しますか？")) return;
 
     try {
-      // まず、shiftsテーブルで参照されているかチェック
-      const { data: shiftData, error: shiftError } = await supabase
-        .from("shifts")
-        .select("id")
-        .eq("work_location_id", workDataId);
-
-      if (shiftError) {
-        console.error("シフト参照チェックエラー:", shiftError.message);
-        return;
-      }
-
-      // 次に、user_hourly_ratesテーブルで参照されているかチェック
-      const { data: rateData, error: rateError } = await supabase
+      // ----- (A) user_hourly_rates テーブルで参照されているかチェック -----
+      const { data: userHrRates, error: userHrErr } = await supabase
         .from("user_hourly_rates")
         .select("id")
         .eq("work_location_id", workDataId);
 
-      if (rateError) {
-        console.error("時給参照チェックエラー:", rateError.message);
+      if (userHrErr) {
+        console.error(
+          "user_hourly_rates 参照チェックエラー:",
+          userHrErr.message
+        );
         return;
       }
+      const userHrIds = (userHrRates || []).map((uhr: any) => uhr.id);
 
-      const isReferenced =
-        (shiftData && shiftData.length > 0) ||
-        (rateData && rateData.length > 0);
+      // ----- (B) shifts テーブルで user_hourly_rate_id in userHrIds があるかチェック -----
+      let usedByShifts = false;
+      if (userHrIds.length > 0) {
+        const { data: shiftsData, error: shiftsErr } = await supabase
+          .from("shifts")
+          .select("id")
+          .in("user_hourly_rate_id", userHrIds);
+
+        if (shiftsErr) {
+          console.error("シフト参照チェックエラー:", shiftsErr.message);
+          return;
+        }
+
+        if (shiftsData && shiftsData.length > 0) {
+          usedByShifts = true;
+        }
+      }
+
+      // user_hourly_rates 自体があれば => それを参照する時給データがある
+      const usedByRates = userHrIds.length > 0;
+
+      // いずれかで使用中
+      const isReferenced = usedByRates || usedByShifts;
 
       if (isReferenced) {
         // 論理削除処理
@@ -116,10 +131,11 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
           alert("論理削除に失敗しました。");
           console.error("論理削除エラー:", error.message);
         } else {
-          alert("この勤務地は他画面で使用されているため、論理削除しました。");
+          // "○○で使用されているため～" の文言
+          alert("他の画面で使用されているため、完全削除せずグレーアウトします");
           // state 更新：対象レコードに is_deleted を反映
-          setLocations(
-            locations.map((loc) =>
+          setLocations((prev) =>
+            prev.map((loc) =>
               loc.id === workDataId ? { ...loc, is_deleted: true } : loc
             )
           );
@@ -136,11 +152,41 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
           console.error("削除エラー:", error.message);
         } else {
           alert("勤務地が完全に削除されました！");
-          setLocations(locations.filter((loc) => loc.id !== workDataId));
+          setLocations((prev) => prev.filter((loc) => loc.id !== workDataId));
         }
       }
     } catch (err) {
       console.error("削除処理中のエラー:", err);
+      alert("ネットワークエラーが発生しました。");
+    }
+  };
+
+  /**
+   * 4) 論理削除されたレコードを復元する処理
+   */
+  const handleRestore = async (workDataId: number) => {
+    if (!confirm("この勤務地を復元しますか？")) return;
+
+    try {
+      const { error } = await supabase
+        .from("work_data")
+        .update({ is_deleted: false })
+        .eq("id", workDataId);
+
+      if (error) {
+        alert("復元に失敗しました。");
+        console.error("復元エラー:", error.message);
+      } else {
+        alert("この勤務地を復元しました。");
+        // state 更新
+        setLocations((prev) =>
+          prev.map((loc) =>
+            loc.id === workDataId ? { ...loc, is_deleted: false } : loc
+          )
+        );
+      }
+    } catch (err) {
+      console.error("復元処理中のエラー:", err);
       alert("ネットワークエラーが発生しました。");
     }
   };
@@ -183,8 +229,8 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
         setStatusMessage(`更新に失敗しました: ${error.message}`);
       } else {
         setStatusMessage("✅ 勤務地が更新されました！");
-        setLocations(
-          locations.map((loc) => {
+        setLocations((prev) =>
+          prev.map((loc) => {
             if (loc.id === locId) {
               return {
                 ...loc,
@@ -325,7 +371,16 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
                       {loc.end_time})
                     </span>
                     <div className="flex space-x-2">
-                      {!loc.is_deleted && (
+                      {/* 論理削除済みなら「復元」ボタンを表示 */}
+                      {loc.is_deleted ? (
+                        <button
+                          onClick={() => handleRestore(loc.id)}
+                          className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
+                        >
+                          復元
+                        </button>
+                      ) : (
+                        // 未削除なら編集ボタンを表示
                         <button
                           onClick={() => startEditingLocation(loc)}
                           className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
@@ -333,6 +388,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
                           編集
                         </button>
                       )}
+
                       <button
                         onClick={() => handleDelete(loc.id)}
                         className="bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600"

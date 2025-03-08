@@ -1,4 +1,5 @@
-// src/pages/admin/shiftRegister/[id].tsx
+// reaclock\src\pages\admin\shiftRegister\[id].tsx
+
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import AdminLayout from "../../../components/AdminLayout";
@@ -22,14 +23,6 @@ export default function ShiftCalendar({ admin }: { admin: { name: string } }) {
     )}`;
   });
 
-  // ✅ インターフェースはここに配置
-  interface WorkData {
-    id: number;
-    location_name: string;
-    start_time: string;
-    end_time: string;
-  }
-
   interface UserHourlyRates {
     id: number;
     hourly_rate: number;
@@ -42,7 +35,7 @@ export default function ShiftCalendar({ admin }: { admin: { name: string } }) {
     date: string;
     start_time: string;
     end_time: string;
-    user_hourly_rates: UserHourlyRates[]; // 配列として型指定
+    user_hourly_rates: UserHourlyRates[];
     hourly_rate: number;
   }
 
@@ -67,59 +60,68 @@ export default function ShiftCalendar({ admin }: { admin: { name: string } }) {
     }
   };
 
+  // user_hourly_rates と紐づく work_data を取得
   const fetchWorkData = async () => {
     try {
       const { data, error } = await supabase
         .from("user_hourly_rates")
         .select(
           `
-        id,
-        hourly_rate,
-        work_data!fk_user_hourly_rates_work_location(id, location_name, start_time, end_time)
-      `
+          id,
+          hourly_rate,
+          work_data!fk_user_hourly_rates_work_location(
+            id,
+            location_name,
+            start_time,
+            end_time,
+            is_deleted
+          )
+        `
         )
         .eq("user_id", id);
 
       if (error) throw error;
 
       const formattedData = (data as any[]).map((item) => {
-        const workDataItem = Array.isArray(item.work_data)
+        const wd = Array.isArray(item.work_data)
           ? item.work_data[0] || {}
           : item.work_data || {};
 
         return {
-          user_hourly_rate_id: item.id ?? null,
-          id: workDataItem.id ?? null,
-          location_name: workDataItem.location_name ?? "不明",
-          start_time: workDataItem.start_time ?? "00:00",
-          end_time: workDataItem.end_time ?? "00:00",
+          user_hourly_rate_id: item.id,
+          id: wd.id,
+          location_name: wd.is_deleted
+            ? `${wd.location_name}（削除済み）`
+            : wd.location_name ?? "不明",
+          start_time: wd.start_time ?? "00:00",
+          end_time: wd.end_time ?? "00:00",
           hourly_rate: item.hourly_rate ?? 0,
+          is_deleted: wd.is_deleted ?? false,
         };
       });
 
-      setWorkData(formattedData || []);
+      setWorkData(formattedData);
     } catch (err) {
       console.error("勤務データ取得エラー:", err);
     }
   };
 
-  // ✅ `shifts` のデータ取得を修正
   const fetchShiftData = async () => {
     try {
       const { data, error } = await supabase
         .from("shifts")
         .select(
           `
-        id, 
-        work_data_id, 
-        user_hourly_rate_id, 
-        date, 
-        start_time, 
-        end_time,
-        user_hourly_rates!fk_shifts_user_hourly_rate(
           id,
-          hourly_rate
-        )
+          work_data_id,
+          user_hourly_rate_id,
+          date,
+          start_time,
+          end_time,
+          user_hourly_rates!fk_shifts_user_hourly_rate(
+            id,
+            hourly_rate
+          )
         `
         )
         .eq("user_id", id)
@@ -155,24 +157,73 @@ export default function ShiftCalendar({ admin }: { admin: { name: string } }) {
   ) => {
     const date = `${selectedMonth}-${String(day).padStart(2, "0")}`;
     const existingShift = shiftData.find((shift) => shift.date === date);
-    const userHourlyRate = workData.find((work) => work.id === Number(value));
 
-    const updatedShift = {
-      work_data_id: Number(value),
-      user_hourly_rate_id: userHourlyRate?.user_hourly_rate_id || null, // ✅ 安全なデフォルト値を設定
-      start_time: userHourlyRate?.start_time || "",
-      end_time: userHourlyRate?.end_time || "",
-      hourly_rate: userHourlyRate?.hourly_rate ?? 0, // ✅ 時給を確実に反映
-    };
+    if (field === "workData") {
+      // 選択された勤務地を取得
+      const userHourlyRate = workData.find((wd) => wd.id === Number(value));
+      if (!userHourlyRate) return;
 
-    if (existingShift) {
-      setShiftData((prev) =>
-        prev.map((shift) =>
-          shift.date === date ? { ...shift, ...updatedShift } : shift
-        )
-      );
-    } else {
-      setShiftData((prev) => [...prev, { user_id: id, date, ...updatedShift }]);
+      const updatedShift = {
+        work_data_id: Number(value),
+        user_hourly_rate_id: userHourlyRate.user_hourly_rate_id,
+        start_time: userHourlyRate.start_time,
+        end_time: userHourlyRate.end_time,
+        hourly_rate: userHourlyRate.hourly_rate,
+      };
+
+      if (existingShift) {
+        setShiftData((prev) =>
+          prev.map((shift) =>
+            shift.date === date ? { ...shift, ...updatedShift } : shift
+          )
+        );
+      } else {
+        setShiftData((prev) => [
+          ...prev,
+          { user_id: id, date, ...updatedShift },
+        ]);
+      }
+    } else if (field === "startTime") {
+      if (existingShift) {
+        setShiftData((prev) =>
+          prev.map((shift) =>
+            shift.date === date ? { ...shift, start_time: value } : shift
+          )
+        );
+      } else {
+        setShiftData((prev) => [
+          ...prev,
+          { user_id: id, date, start_time: value },
+        ]);
+      }
+    } else if (field === "endTime") {
+      if (existingShift) {
+        setShiftData((prev) =>
+          prev.map((shift) =>
+            shift.date === date ? { ...shift, end_time: value } : shift
+          )
+        );
+      } else {
+        setShiftData((prev) => [
+          ...prev,
+          { user_id: id, date, end_time: value },
+        ]);
+      }
+    } else if (field === "hourlyRate") {
+      if (existingShift) {
+        setShiftData((prev) =>
+          prev.map((shift) =>
+            shift.date === date
+              ? { ...shift, hourly_rate: Number(value) }
+              : shift
+          )
+        );
+      } else {
+        setShiftData((prev) => [
+          ...prev,
+          { user_id: id, date, hourly_rate: Number(value) },
+        ]);
+      }
     }
   };
 
@@ -194,14 +245,14 @@ export default function ShiftCalendar({ admin }: { admin: { name: string } }) {
           };
 
           if (existingShift && existingShift.id) {
-            // ✅ IDが存在する場合のみアップデート
+            // 既存レコードをアップデート
             const { error } = await supabase
               .from("shifts")
               .update(shiftPayload)
               .eq("id", existingShift.id);
             if (error) throw error;
           } else {
-            // ✅ IDがない場合は新規作成
+            // 新規レコード作成
             const { error } = await supabase.from("shifts").insert({
               user_id: id,
               date: shift.date,
@@ -250,6 +301,7 @@ export default function ShiftCalendar({ admin }: { admin: { name: string } }) {
         ) : (
           <p className="text-red-500 mb-6">スタッフ情報を読み込んでいます...</p>
         )}
+
         <div className="mb-6">
           <label className="block font-bold mb-2">月を選択</label>
           <input
@@ -281,6 +333,7 @@ export default function ShiftCalendar({ admin }: { admin: { name: string } }) {
                   const shift = shiftData.find((s) => s.date === date) || {};
                   const workDataId = shift.work_data_id || "";
                   const isDisabled = !workDataId;
+
                   return (
                     <tr key={day}>
                       <td className="border border-gray-300 px-4 py-2 text-center">
@@ -295,9 +348,9 @@ export default function ShiftCalendar({ admin }: { admin: { name: string } }) {
                           className="border px-2 py-1 w-full"
                         >
                           <option value="">-</option>
-                          {workData.map((work) => (
-                            <option key={work.id} value={work.id}>
-                              {work.location_name}（{work.hourly_rate}円）
+                          {workData.map((wd) => (
+                            <option key={wd.id} value={wd.id}>
+                              {wd.location_name}（{wd.hourly_rate}円）
                             </option>
                           ))}
                         </select>
