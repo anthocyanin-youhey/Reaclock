@@ -1,5 +1,4 @@
-//reaclock\src\pages\user\attendance.tsx
-// 必要なインポート
+// reaclock/src/pages/user/attendance.tsx
 import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabaseCliants";
 import UserLayout from "../../components/UserLayout";
@@ -22,8 +21,8 @@ export default function AttendancePage({
   ); // デフォルトで現在の月 (YYYY-MM)
   const [daysInMonth, setDaysInMonth] = useState<string[]>([]);
 
+  // ▼ 月の日付リスト生成
   useEffect(() => {
-    // 月の日付リストを生成
     const calculateDaysInMonth = () => {
       const [year, month] = selectedMonth.split("-").map(Number);
       const days = new Date(year, month, 0).getDate();
@@ -33,17 +32,17 @@ export default function AttendancePage({
       );
       setDaysInMonth(dates);
     };
-
     calculateDaysInMonth();
   }, [selectedMonth]);
 
+  // ▼ 打刻データ＆シフトデータを取得
   useEffect(() => {
     const fetchAttendanceAndShiftRecords = async () => {
       try {
-        // ✅ 打刻データ取得
+        // ---- 打刻データ取得
         const { data: attendanceData, error: attendanceError } = await supabase
           .from("attendance_records")
-          .select("work_date, clock_in, clock_out")
+          .select("work_date, clock_in, clock_out, status, absent_reason")
           .eq("user_id", user.id)
           .gte("work_date", `${selectedMonth}-01`)
           .lte(
@@ -62,26 +61,31 @@ export default function AttendancePage({
           return;
         }
 
-        const attendanceMap = (attendanceData || []).reduce((acc, record) => {
-          acc[record.work_date] = record;
-          return acc;
-        }, {} as Record<string, any>);
+        // attendanceMap: { "YYYY-MM-DD": { clock_in, clock_out, status, absent_reason } }
+        const attendanceMap = (attendanceData || []).reduce(
+          (acc: Record<string, any>, record: any) => {
+            acc[record.work_date] = record;
+            return acc;
+          },
+          {}
+        );
 
-        // ✅ 正しいリレーションを使用したシフトデータ取得
+        // ---- シフトデータ取得
         const { data: shiftData, error: shiftError } = await supabase
           .from("shifts")
           .select(
             `
-    date, 
-    start_time, 
-    end_time,
-    user_hourly_rates!fk_shifts_user_hourly_rate (
-      hourly_rate,
-      work_data!fk_user_hourly_rates_work_location (
-        location_name
-      )
-    )
-    `
+            date, 
+            start_time, 
+            end_time,
+            user_hourly_rates!fk_shifts_user_hourly_rate (
+              hourly_rate,
+              work_data!fk_user_hourly_rates_work_location (
+                location_name,
+                is_deleted
+              )
+            )
+          `
           )
           .eq("user_id", user.id)
           .gte("date", `${selectedMonth}-01`)
@@ -101,39 +105,59 @@ export default function AttendancePage({
           return;
         }
 
-        // ✅ 勤務地と時給単価をマッピング
-        interface WorkData {
-          location_name: string;
-        }
+        // shiftMap: { "YYYY-MM-DD": { start_time, end_time, hourly_rate, location_name } }
+        const shiftMap = (shiftData || []).reduce(
+          (acc: Record<string, any>, record: any) => {
+            let hr = "-";
+            let loc = "-";
 
-        interface UserHourlyRate {
-          hourly_rate: number;
-          work_data: WorkData | WorkData[]; // 配列の可能性を考慮
-        }
+            const userHourlyRates = record.user_hourly_rates;
+            if (Array.isArray(userHourlyRates)) {
+              const first = userHourlyRates[0];
+              hr = first?.hourly_rate ?? "-";
 
-        interface ShiftRecord {
-          date: string;
-          start_time: string;
-          end_time: string;
-          user_hourly_rates: UserHourlyRate | UserHourlyRate[];
-        }
+              if (Array.isArray(first?.work_data)) {
+                const wd = first.work_data[0];
+                if (wd) {
+                  loc = wd.is_deleted
+                    ? `${wd.location_name}（削除済み）`
+                    : wd.location_name ?? "-";
+                }
+              } else if (first?.work_data) {
+                const wd = first.work_data;
+                loc = wd.is_deleted
+                  ? `${wd.location_name}（削除済み）`
+                  : wd.location_name ?? "-";
+              }
+            } else if (userHourlyRates) {
+              hr = userHourlyRates.hourly_rate ?? "-";
 
-        const shiftMap = (shiftData as ShiftRecord[]).reduce((acc, record) => {
-          const userHourlyRate = Array.isArray(record.user_hourly_rates)
-            ? record.user_hourly_rates[0]
-            : record.user_hourly_rates;
+              if (Array.isArray(userHourlyRates.work_data)) {
+                const wd = userHourlyRates.work_data[0];
+                if (wd) {
+                  loc = wd.is_deleted
+                    ? `${wd.location_name}（削除済み）`
+                    : wd.location_name ?? "-";
+                }
+              } else if (userHourlyRates.work_data) {
+                const wd = userHourlyRates.work_data;
+                loc = wd.is_deleted
+                  ? `${wd.location_name}（削除済み）`
+                  : wd.location_name ?? "-";
+              }
+            }
 
-          const workLocation = Array.isArray(userHourlyRate?.work_data)
-            ? userHourlyRate.work_data[0]?.location_name ?? "-"
-            : (userHourlyRate?.work_data as WorkData)?.location_name ?? "-";
-
-          acc[record.date] = {
-            ...record,
-            hourly_rate: userHourlyRate?.hourly_rate ?? "-",
-            location_name: workLocation,
-          };
-          return acc;
-        }, {} as Record<string, any>);
+            acc[record.date] = {
+              date: record.date,
+              start_time: record.start_time || "-",
+              end_time: record.end_time || "-",
+              hourly_rate: hr,
+              location_name: loc,
+            };
+            return acc;
+          },
+          {}
+        );
 
         setErrorMessage("");
         setRecords(attendanceMap);
@@ -147,14 +171,16 @@ export default function AttendancePage({
     fetchAttendanceAndShiftRecords();
   }, [selectedMonth, user.id]);
 
-  // 出勤ステータスを決定するヘルパー関数
+  // ▼ 出勤ステータス判定
+  // 管理者によって「欠勤」として登録されている場合は「欠勤」を表示するように修正
   const getStatus = (record: any): string => {
+    if (record?.status === "欠勤") return "欠勤";
     if (record?.clock_in && !record?.clock_out) return "出勤中";
     if (record?.clock_out) return "退勤済み";
     return "未出勤";
   };
 
-  // Excel出力機能
+  // ▼ Excel出力機能
   const exportToExcel = () => {
     const exportData = daysInMonth.map((date) => {
       const record = records[date];
@@ -165,6 +191,7 @@ export default function AttendancePage({
         退勤時刻: record?.clock_out ? formatToJapanTime(record.clock_out) : "-",
         シフト開始時間: shift?.start_time || "-",
         シフト終了時間: shift?.end_time || "-",
+        勤務地: shift?.location_name || "-",
         時給単価: shift?.hourly_rate ? `${shift.hourly_rate}円` : "-",
         出勤ステータス: getStatus(record),
       };
@@ -177,6 +204,15 @@ export default function AttendancePage({
     XLSX.writeFile(workbook, `打刻履歴-${user.name}-${selectedMonth}.xlsx`);
   };
 
+  // ▼ データがない日かどうか判定
+  const isNoDataDay = (record: any, shift: any): boolean => {
+    const noShift =
+      !shift || (shift.start_time === "-" && shift.end_time === "-");
+    const noClock = !record || (!record.clock_in && !record.clock_out);
+    return noShift && noClock;
+  };
+
+  // ▼ スマホ表示: カードレイアウト (md未満) とPC表示: テーブル (md以上) の2段構成
   return (
     <UserLayout userName={user.name}>
       <div className="container mx-auto py-6">
@@ -205,64 +241,138 @@ export default function AttendancePage({
         {errorMessage && <p className="text-red-500">{errorMessage}</p>}
 
         {daysInMonth.length > 0 ? (
-          <table className="min-w-full bg-white border border-gray-300">
-            <thead>
-              <tr>
-                <th className="border border-gray-300 px-4 py-2">日付</th>
-                <th className="border border-gray-300 px-4 py-2">出勤時刻</th>
-                <th className="border border-gray-300 px-4 py-2">退勤時刻</th>
-                <th className="border border-gray-300 px-4 py-2">
-                  シフト開始時間
-                </th>
-                <th className="border border-gray-300 px-4 py-2">
-                  シフト終了時間
-                </th>
-                <th className="border border-gray-300 px-4 py-2">勤務地</th>
-                <th className="border border-gray-300 px-4 py-2">時給単価</th>
-                <th className="border border-gray-300 px-4 py-2">
-                  出勤ステータス
-                </th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* --- (A) スマホ表示: カードレイアウト (md未満) --- */}
+            <div className="block md:hidden space-y-4">
               {daysInMonth.map((date) => {
                 const record = records[date];
                 const shift = shifts[date];
+                const status = getStatus(record);
+
+                // データがない日ならスリム表示
+                const noData = isNoDataDay(record, shift);
+
+                if (noData) {
+                  return (
+                    <div
+                      key={date}
+                      className="border p-3 rounded shadow-sm bg-white"
+                    >
+                      <div className="text-sm font-bold mb-1">{date}</div>
+                      <div className="text-xs text-gray-500">データなし</div>
+                    </div>
+                  );
+                }
+
                 return (
-                  <tr key={date}>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
-                      {date}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
+                  <div
+                    key={date}
+                    className="border p-3 rounded shadow-sm bg-white"
+                  >
+                    <div className="text-sm font-bold mb-2">{date}</div>
+                    <div className="text-sm">
+                      <span className="font-bold">出勤時刻:</span>{" "}
                       {record?.clock_in
                         ? formatToJapanTime(record.clock_in)
                         : "-"}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-bold">退勤時刻:</span>{" "}
                       {record?.clock_out
                         ? formatToJapanTime(record.clock_out)
                         : "-"}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
-                      {shift?.start_time || "-"}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
-                      {shift?.end_time || "-"}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-bold">シフト:</span>{" "}
+                      {shift?.start_time || "-"} ~ {shift?.end_time || "-"}
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-bold">勤務地:</span>{" "}
                       {shift?.location_name || "-"}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-bold">時給単価:</span>{" "}
                       {shift?.hourly_rate ? `${shift.hourly_rate}円` : "-"}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-2 text-center">
-                      {getStatus(record)}
-                    </td>
-                  </tr>
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-bold">出勤ステータス:</span>{" "}
+                      {status}
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+
+            {/* --- (B) PC表示: テーブル (md以上) --- */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="min-w-full bg-white border border-gray-300">
+                <thead>
+                  <tr>
+                    <th className="border border-gray-300 px-4 py-2">日付</th>
+                    <th className="border border-gray-300 px-4 py-2">
+                      出勤時刻
+                    </th>
+                    <th className="border border-gray-300 px-4 py-2">
+                      退勤時刻
+                    </th>
+                    <th className="border border-gray-300 px-4 py-2">
+                      シフト開始時間
+                    </th>
+                    <th className="border border-gray-300 px-4 py-2">
+                      シフト終了時間
+                    </th>
+                    <th className="border border-gray-300 px-4 py-2">勤務地</th>
+                    <th className="border border-gray-300 px-4 py-2">
+                      時給単価
+                    </th>
+                    <th className="border border-gray-300 px-4 py-2">
+                      出勤ステータス
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {daysInMonth.map((date) => {
+                    const record = records[date];
+                    const shift = shifts[date];
+                    const status = getStatus(record);
+
+                    return (
+                      <tr key={date}>
+                        <td className="border border-gray-300 px-4 py-2 text-center">
+                          {date}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2 text-center">
+                          {record?.clock_in
+                            ? formatToJapanTime(record.clock_in)
+                            : "-"}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2 text-center">
+                          {record?.clock_out
+                            ? formatToJapanTime(record.clock_out)
+                            : "-"}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2 text-center">
+                          {shift?.start_time || "-"}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2 text-center">
+                          {shift?.end_time || "-"}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2 text-center">
+                          {shift?.location_name || "-"}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2 text-center">
+                          {shift?.hourly_rate ? `${shift.hourly_rate}円` : "-"}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2 text-center">
+                          {status}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : (
           <p className="text-gray-500">選択した月のデータはありません。</p>
         )}

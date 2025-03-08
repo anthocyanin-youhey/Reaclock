@@ -39,7 +39,11 @@ export default function AdminLayout({
   return (
     <div className="flex flex-col min-h-screen relative">
       <header className="bg-blue-500 text-white relative z-50">
-        <div className="container mx-auto flex justify-between items-center py-4 px-6">
+        {/* 
+          max-w-screen-xl: 1280px幅までのコンテナ 
+          → 1280px以上では中央寄せ 
+        */}
+        <div className="container max-w-screen-xl mx-auto flex justify-between items-center py-4 px-6">
           {/* タイトルと管理者名：管理者ダッシュボードをクリックでホームへ */}
           <div>
             <Link href="/admin/dashboard" legacyBehavior>
@@ -50,8 +54,8 @@ export default function AdminLayout({
             <p className="text-sm mt-1">{adminName} さんでログイン中</p>
           </div>
 
-          {/* デスクトップ用ナビゲーション */}
-          <nav className="hidden md:flex space-x-4 items-center">
+          {/* デスクトップ用ナビゲーション (xl以上で表示) */}
+          <nav className="hidden xl:flex space-x-4 items-center">
             <Link href="/admin/dashboard">
               <span className="py-2 px-4 rounded text-sm hover:bg-blue-600 cursor-pointer">
                 ホーム
@@ -89,8 +93,8 @@ export default function AdminLayout({
             </Link>
           </nav>
 
-          {/* デスクトップ用ログアウトボタン */}
-          <div className="hidden md:flex items-center space-x-4">
+          {/* デスクトップ用ログアウトボタン (xl以上で表示) */}
+          <div className="hidden xl:flex items-center space-x-4">
             <button
               onClick={handleLogout}
               className="py-2 px-4 rounded border border-red-500 bg-red-500 text-white text-sm hover:bg-white hover:text-red-500 transition-all"
@@ -99,9 +103,9 @@ export default function AdminLayout({
             </button>
           </div>
 
-          {/* ハンバーガーメニューボタン（モバイル用） */}
+          {/* ハンバーガーメニューボタン（モバイル～lgまで表示） */}
           <button
-            className="md:hidden text-white focus:outline-none z-50"
+            className="xl:hidden text-white focus:outline-none z-50"
             onClick={() => setMenuOpen(true)}
           >
             <svg
@@ -130,7 +134,7 @@ export default function AdminLayout({
         ></div>
       )}
 
-      {/* モバイル用サイドバー（右からスライドイン） */}
+      {/* モバイル用サイドバー（右からスライドイン） (xl未満で表示) */}
       <div
         className={`fixed top-0 right-0 w-64 h-full bg-blue-500 text-white z-50 transform transition-transform duration-300 ${
           menuOpen ? "translate-x-0" : "translate-x-full"
@@ -227,10 +231,13 @@ export default function AdminLayout({
         </div>
       )}
 
-      <main className="flex-grow container mx-auto px-6 py-4">{children}</main>
+      {/* メインコンテンツ */}
+      <main className="flex-grow container max-w-screen-xl mx-auto px-6 py-4">
+        {children}
+      </main>
 
       <footer className="bg-gray-800 text-white py-4">
-        <div className="container mx-auto text-center">
+        <div className="container max-w-screen-xl mx-auto text-center">
           <p>&copy; 2024 打刻アプリ - 管理者専用</p>
         </div>
       </footer>

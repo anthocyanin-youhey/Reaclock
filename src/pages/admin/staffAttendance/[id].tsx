@@ -27,10 +27,10 @@ export default function StaffAttendance({
 
   const hourOptions = Array.from({ length: 24 }, (_, i) =>
     String(i).padStart(2, "0")
-  ); // 時間選択肢
+  );
   const minuteOptions = Array.from({ length: 60 }, (_, i) =>
     String(i).padStart(2, "0")
-  ); // 分選択肢
+  );
 
   // 打刻履歴を取得
   const fetchRecords = async () => {
@@ -41,15 +41,13 @@ export default function StaffAttendance({
         parseInt(selectedMonth.split("-")[1]),
         0
       ).getDate()}`;
-
       const { data, error } = await supabase
         .from("attendance_records")
-        .select("id, work_date, clock_in, clock_out")
+        .select("id, work_date, clock_in, clock_out, status")
         .eq("user_id", id)
         .gte("work_date", firstDay)
         .lte("work_date", lastDay)
         .order("work_date", { ascending: true });
-
       if (error) {
         setError("打刻履歴の取得に失敗しました。");
         console.error(error);
@@ -59,16 +57,16 @@ export default function StaffAttendance({
             ...record,
             clock_in_hour: record.clock_in
               ? record.clock_in.split(":")[0]
-              : "--",
+              : "00",
             clock_in_minute: record.clock_in
               ? record.clock_in.split(":")[1]
-              : "--",
+              : "00",
             clock_out_hour: record.clock_out
               ? record.clock_out.split(":")[0]
-              : "--",
+              : "00",
             clock_out_minute: record.clock_out
               ? record.clock_out.split(":")[1]
-              : "--",
+              : "00",
             hasChanges: false, // 初期状態では変更なし
           }))
         );
@@ -87,64 +85,57 @@ export default function StaffAttendance({
       clock_in_minute,
       clock_out_hour,
       clock_out_minute,
-      work_date, // 勤務日を取得
+      work_date,
     } = record;
-
-    // 時刻が未入力の場合に null を設定
     const clock_in =
-      clock_in_hour === "--" || clock_in_minute === "--"
-        ? null
+      clock_in_hour === "00" && clock_in_minute === "00"
+        ? "00:00:00"
         : `${clock_in_hour}:${clock_in_minute}:00`;
     const clock_out =
-      clock_out_hour === "--" || clock_out_minute === "--"
-        ? null
+      clock_out_hour === "00" && clock_out_minute === "00"
+        ? "00:00:00"
         : `${clock_out_hour}:${clock_out_minute}:00`;
-
+    let newStatus = null;
+    if (clock_in && clock_out) {
+      newStatus = "退勤済み";
+    } else if (clock_in && !clock_out) {
+      newStatus = "出勤中";
+    }
     try {
-      // レコードが既存かどうか確認
       const { data: existingRecord, error: fetchError } = await supabase
         .from("attendance_records")
         .select("*")
         .eq("user_id", id)
         .eq("work_date", work_date)
-        .single(); // `user_id`と`work_date`で一意にチェック
-
-      // 新規登録かどうかを判定
+        .single();
       const isNewRecord = !existingRecord;
-
-      // レコードを更新または挿入
       const { error: upsertError } = await supabase
         .from("attendance_records")
         .upsert(
           {
-            id: isNewRecord ? undefined : existingRecord.id, // 既存の場合はIDを指定
-            user_id: id, // ユーザーID
-            work_date, // 勤務日
+            id: isNewRecord ? undefined : existingRecord.id,
+            user_id: id,
+            work_date,
             clock_in,
             clock_out,
+            status: newStatus,
           },
-          { onConflict: "user_id, work_date" } // ユーザーIDと勤務日で競合チェック
+          { onConflict: "user_id, work_date" }
         );
-
       if (upsertError) {
         alert("レコード保存に失敗しました。");
         console.error("アップサートエラー:", upsertError);
         return;
       }
-
-      // 変更ログを保存
-      const changeNumber =
-        (
-          await supabase
-            .from("attendance_change_logs")
-            .select("id", { count: "exact" })
-            .eq("attendance_id", isNewRecord ? undefined : existingRecord.id)
-        )?.count + 1 || 1;
-
+      // 保存した変更ログ（ここでは簡単な実装例）
+      const { data: logData, count } = await supabase
+        .from("attendance_change_logs")
+        .select("id", { count: "exact" })
+        .eq("attendance_id", isNewRecord ? undefined : existingRecord.id);
+      const changeNumber = (count || 0) + 1;
       const changedAt = new Date().toLocaleString("ja-JP", {
         timeZone: "Asia/Tokyo",
       });
-
       const { error: logError } = await supabase
         .from("attendance_change_logs")
         .insert({
@@ -159,20 +150,18 @@ export default function StaffAttendance({
           change_number: changeNumber,
           change_type: isNewRecord ? "新規登録" : "変更",
         });
-
       if (logError) {
         console.error("変更ログ保存エラー:", logError);
       }
-
       alert("保存が完了しました！");
-      fetchRecords(); // データを再取得
+      fetchRecords();
     } catch (err) {
       console.error("保存エラー:", err);
       alert("保存中にエラーが発生しました。");
     }
   };
 
-  // 変更ログを取得
+  // 変更ログ取得
   const fetchChangeLog = async (recordId: string) => {
     try {
       const { data, error } = await supabase
@@ -180,7 +169,6 @@ export default function StaffAttendance({
         .select("*")
         .eq("attendance_id", recordId)
         .order("change_number", { ascending: true });
-
       if (error) {
         alert("変更ログの取得に失敗しました。");
         console.error(error);
@@ -193,7 +181,7 @@ export default function StaffAttendance({
             }),
           }))
         );
-        setIsModalOpen(true); // モーダルを表示
+        setIsModalOpen(true);
       }
     } catch (err) {
       console.error("変更ログ取得エラー:", err);
@@ -208,7 +196,6 @@ export default function StaffAttendance({
         .from("attendance_change_logs")
         .delete()
         .eq("id", logId);
-
       if (error) {
         alert("変更ログの削除に失敗しました。");
         console.error(error);
@@ -227,11 +214,7 @@ export default function StaffAttendance({
     setRecords((prev) =>
       prev.map((record) =>
         record.id === recordId
-          ? {
-              ...record,
-              [field]: value,
-              hasChanges: true, // 変更があったフラグをセット
-            }
+          ? { ...record, [field]: value, hasChanges: true }
           : record
       )
     );
@@ -246,7 +229,6 @@ export default function StaffAttendance({
       <div className="container mx-auto py-6">
         <h1 className="text-2xl font-bold mb-4">打刻履歴編集</h1>
         {error && <p className="text-red-500 mb-4">{error}</p>}
-
         {/* 月選択 */}
         <div className="mb-6">
           <label className="block font-bold mb-2">月を選択</label>
@@ -257,7 +239,6 @@ export default function StaffAttendance({
             className="border px-4 py-2"
           />
         </div>
-
         {/* 打刻履歴テーブル */}
         <table className="w-full bg-white border-collapse border border-gray-300">
           <thead>
@@ -271,11 +252,9 @@ export default function StaffAttendance({
           <tbody>
             {records.map((record) => (
               <tr key={record.id}>
-                {/* 勤務日 */}
                 <td className="border border-gray-300 px-4 py-2 text-center">
                   {record.work_date}
                 </td>
-                {/* 出勤時間 */}
                 <td className="border border-gray-300 px-4 py-2 text-center">
                   <div className="flex justify-center">
                     <select
@@ -314,7 +293,6 @@ export default function StaffAttendance({
                     </select>
                   </div>
                 </td>
-                {/* 退勤時間 */}
                 <td className="border border-gray-300 px-4 py-2 text-center">
                   <div className="flex justify-center">
                     <select
@@ -353,7 +331,6 @@ export default function StaffAttendance({
                     </select>
                   </div>
                 </td>
-                {/* 操作ボタン */}
                 <td className="border border-gray-300 px-4 py-2 text-center">
                   <button
                     onClick={() => saveRecord(record)}
@@ -378,7 +355,6 @@ export default function StaffAttendance({
           </tbody>
         </table>
       </div>
-
       {/* モーダルウィンドウ */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">

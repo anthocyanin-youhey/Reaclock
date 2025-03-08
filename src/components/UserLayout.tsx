@@ -1,4 +1,4 @@
-//reaclock\src\components\UserLayout.tsx
+// reaclock/src/components/UserLayout.tsx
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useState } from "react";
@@ -11,7 +11,7 @@ export default function UserLayout({
   userName: string;
 }) {
   const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false); // ハンバーガーメニューの開閉状態
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -21,9 +21,8 @@ export default function UserLayout({
           "Content-Type": "application/json",
         },
       });
-
       if (response.ok) {
-        router.push("/user/login"); // ログイン画面にリダイレクト
+        router.push("/user/login");
       } else {
         console.error("ログアウトに失敗しました");
       }
@@ -34,11 +33,13 @@ export default function UserLayout({
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* ヘッダー部分 */}
       <header className="bg-green-500 text-white relative">
         <div className="container mx-auto flex justify-between items-center py-4 px-6">
           <div className="flex items-center space-x-2">
-            <h1 className="text-xl font-bold">利用者画面</h1>
+            {/* タイトルをクリックで /user/clock へ遷移 */}
+            <Link href="/user/clock" legacyBehavior>
+              <a className="text-xl font-bold hover:opacity-80">利用者画面</a>
+            </Link>
             {/* スマホサイズでのユーザー名表示 */}
             <span className="text-sm font-light ml-2 md:hidden">
               {userName} さん
@@ -57,7 +58,6 @@ export default function UserLayout({
                 履歴
               </span>
             </Link>
-            {/* ユーザー名とログアウトボタン */}
             <div className="flex items-center space-x-4">
               <p className="text-sm font-light">{userName} さんでログイン中</p>
               <button
@@ -69,7 +69,7 @@ export default function UserLayout({
             </div>
           </div>
 
-          {/* ハンバーガーメニュー */}
+          {/* ハンバーガーメニューボタン（モバイル用） */}
           <button
             className="block md:hidden text-white focus:outline-none z-50"
             onClick={() => setMenuOpen(!menuOpen)}
@@ -93,7 +93,7 @@ export default function UserLayout({
           </button>
         </div>
 
-        {/* ハンバーガーメニュー表示 */}
+        {/* モバイル用サイドバー */}
         <nav
           className={`fixed top-0 right-0 h-full bg-green-600 text-white w-64 transform ${
             menuOpen ? "translate-x-0" : "translate-x-full"
@@ -123,7 +123,10 @@ export default function UserLayout({
             </li>
             <li className="mt-10">
               <button
-                onClick={handleLogout}
+                onClick={() => {
+                  setMenuOpen(false);
+                  handleLogout();
+                }}
                 className="block w-full py-2 px-4 rounded border border-red-500 bg-red-500 text-white hover:bg-white hover:text-red-500 transition-all"
               >
                 ログアウト
@@ -133,10 +136,8 @@ export default function UserLayout({
         </nav>
       </header>
 
-      {/* メインコンテンツ */}
       <main className="flex-grow container mx-auto px-6 py-4">{children}</main>
 
-      {/* フッター部分 */}
       <footer className="bg-gray-800 text-white py-4">
         <div className="container mx-auto text-center">
           <p>&copy; 2024 利用者画面</p>
