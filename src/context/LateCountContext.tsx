@@ -1,19 +1,40 @@
 // src/context/LateCountContext.tsx
 
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  ReactNode,
+  Dispatch,
+  SetStateAction,
+} from "react";
 
-// Contextの型定義
+/**
+ * 遅刻件数を管理するための Context で利用する型定義
+ */
 type LateCountContextType = {
   lateCount: number;
-  setLateCount: (count: number) => void;
+  /**
+   * React の setState と同様に、
+   *   setLateCount(数値)
+   *  または
+   *   setLateCount((prevCount) => prevCount + 1)
+   * といった使い方が可能になるようにする
+   */
+  setLateCount: Dispatch<SetStateAction<number>>;
 };
 
-// Contextの初期値
+/**
+ * Context の初期値は undefined にしておき、
+ * 実際に Provider を使わずに利用しようとした場合はエラーを投げる
+ */
 const LateCountContext = createContext<LateCountContextType | undefined>(
   undefined
 );
 
-// Providerコンポーネント
+/**
+ * 遅刻件数を提供するコンポーネント
+ */
 export const LateCountProvider = ({ children }: { children: ReactNode }) => {
   const [lateCount, setLateCount] = useState<number>(0);
 
@@ -24,7 +45,9 @@ export const LateCountProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-// Contextを利用するためのカスタムフック
+/**
+ * 遅刻件数を利用するためのカスタムフック
+ */
 export const useLateCount = () => {
   const context = useContext(LateCountContext);
   if (!context) {

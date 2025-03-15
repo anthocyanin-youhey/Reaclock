@@ -1,30 +1,43 @@
-//\reaclock\src\pages\admin\attendanceStatus.tsx
+// reaclock/src/pages/admin/attendanceStatus.tsx
+
 import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabaseCliants";
 import AdminLayout from "../../components/AdminLayout";
 import { requireAdminAuth } from "../../utils/authHelpers";
-import { formatToJapanTime } from "../../utils/dateHelpers";
 import { useLateCount } from "../../context/LateCountContext";
 
 export const getServerSideProps = requireAdminAuth;
 
-type AttendanceRecord = {
-  id: number;
-  work_date: string;
-  clock_in?: string;
-  status?: string;
-  users: {
-    name: string;
-    employee_number: string;
-  };
-  shifts: {
-    start_time: string;
-    user_hourly_rates: {
-      work_data: {
-        location_name: string;
-      };
-    };
-  };
+/** YYYY-MM-DD形式の本日の日付を返す */
+function getJapanDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** HH:MM形式の現在時刻を返す */
+function getCurrentTime(): string {
+  const now = new Date();
+  return now.toLocaleTimeString("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+/** 遅刻者を格納する型 */
+type TardyInfo = {
+  userId: number;
+  userName: string; // users.name
+  employeeNumber: string; // users.employee_number
+  shiftId: number;
+  shiftStartTime: string; // shifts.start_time
+  clockInTime: string | null; // attendance_records.clock_in
+  status: "遅刻" | "対応済み";
+  locationName: string; // work_data.location_name
 };
 
 export default function AttendanceStatus({
@@ -32,249 +45,318 @@ export default function AttendanceStatus({
 }: {
   admin: { name: string };
 }) {
-  const [lateComers, setLateComers] = useState<AttendanceRecord[]>([]);
-  const [error, setError] = useState<string>("");
-  const [todayDate, setTodayDate] = useState<string>(""); // ✅ useStateで定義
+  // 選択日 (初期値: 今日)
+  const [selectedDate, setSelectedDate] = useState(getJapanDate());
+  // 遅刻者リスト
+  const [tardyList, setTardyList] = useState<TardyInfo[]>([]);
+  // エラーメッセージ
+  const [error, setError] = useState("");
+  // ナビバーの未対応件数コンテキスト
   const { setLateCount } = useLateCount();
 
-  // ✅ 日本時間の日付を取得
-  const getJapanDate = () => {
-    const formatter = new Intl.DateTimeFormat("ja-JP", {
-      timeZone: "Asia/Tokyo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    const parts = formatter.formatToParts(new Date());
-    const year = parts.find((part) => part.type === "year")?.value;
-    const month = parts.find((part) => part.type === "month")?.value;
-    const day = parts.find((part) => part.type === "day")?.value;
-    return `${year}-${month}-${day}`;
-  };
-
   useEffect(() => {
-    const date = getJapanDate();
-    setTodayDate(date); // ✅ 日付をセット
-    fetchTodayLateComers(date); // ✅ 日付を渡して取得
-  }, []);
+    fetchTardyShiftsForDate(selectedDate);
+  }, [selectedDate]);
 
-  // ✅ 今日の遅刻者取得関数をtodayDate引数化
-  const fetchTodayLateComers = async (date: string) => {
-    if (!date) {
-      console.error("日付が未定義です。");
-      return;
-    }
-
+  /**
+   * 指定日の遅刻者をマルチステップで取得し、tardyListにセット。
+   * 選択日が当日の場合のみ、未対応件数をナビバーに反映。
+   */
+  async function fetchTardyShiftsForDate(date: string) {
     try {
-      const { data, error } = await supabase
-        .from("attendance_records")
-        .select(
-          `
-    id,
-    work_date,
-    clock_in,
-    status,
-    users!inner (
-      name,
-      employee_number
-    ),
-    shifts!fk_attendance_records_shift (
-      start_time,
-      work_data!inner (
-        location_name
-      )
-    )
-    `
-        )
-        .eq("work_date", date)
-        .order("clock_in", { ascending: true });
+      setError("");
+      // ① shiftsテーブルから取得
+      const { data: shifts, error: shiftError } = await supabase
+        .from("shifts")
+        .select("id, user_id, date, start_time, user_hourly_rate_id")
+        .eq("date", date);
+      if (shiftError) throw shiftError;
 
-      if (error) {
-        setError("データの取得に失敗しました。");
-        console.error("Supabaseエラー:", error);
+      if (!shifts || shifts.length === 0) {
+        // シフトがなければ遅刻者もいない
+        setTardyList([]);
+        // 当日なら0件を反映、そうでなければ触らない or 0件
+        if (date === getJapanDate()) {
+          setLateCount(0);
+        }
         return;
       }
 
-      console.log("取得したデータ:", data);
+      // 当日なら現在時刻(1970-01-01基準)を作成
+      const currentJapanDate = getJapanDate();
+      let nowTime: Date | null = null;
+      if (date === currentJapanDate) {
+        nowTime = new Date(`1970-01-01T${getCurrentTime()}:00`);
+      }
 
-      const formattedData: AttendanceRecord[] = (data || []).map(
-        (record: any) => ({
-          id: record.id,
-          work_date: record.work_date,
-          clock_in: record.clock_in,
-          status: record.status || "未対応",
-          users: record.users,
-          shifts: {
-            start_time: record.shifts?.start_time || "-",
-            user_hourly_rates: {
-              work_data: {
-                location_name: record.shifts?.work_data?.location_name || "-",
-              },
-            },
-          },
-        })
-      );
-      setLateComers(formattedData);
-    } catch (err) {
-      console.error("データ取得エラー:", err);
-      setError("データ取得中にエラーが発生しました。");
+      const resultList: TardyInfo[] = [];
+
+      // ② 各シフトについて順次取得
+      for (const shift of shifts) {
+        // シフト開始時刻がなければ判定不可
+        if (!shift.start_time) continue;
+        const shiftStartDate = new Date(`1970-01-01T${shift.start_time}`);
+        if (isNaN(shiftStartDate.getTime())) continue;
+
+        // 当日かつシフト開始前なら遅刻判定しない
+        if (date === currentJapanDate && nowTime && nowTime < shiftStartDate) {
+          continue;
+        }
+
+        // 2-1) attendance_records 取得
+        const { data: attData, error: attError } = await supabase
+          .from("attendance_records")
+          .select("id, clock_in, status")
+          .eq("user_id", shift.user_id)
+          .eq("work_date", date)
+          .single();
+        if (attError && attError.code !== "PGRST116") throw attError;
+
+        let clockInStr: string | null = null;
+        let clockInDate: Date | null = null;
+        let recordStatus: "遅刻" | "対応済み" = "遅刻";
+
+        if (attData?.clock_in) {
+          clockInStr = attData.clock_in;
+          clockInDate = new Date(`1970-01-01T${clockInStr}`);
+        }
+        if (attData?.status === "対応済み") {
+          recordStatus = "対応済み";
+        }
+
+        // 遅刻判定
+        let isTardy = false;
+        if (clockInDate) {
+          // 打刻あり → シフト開始後なら遅刻
+          if (clockInDate > shiftStartDate) {
+            isTardy = true;
+          }
+        } else {
+          // 打刻なし → 過去日 or (当日かつ現在時刻>シフト開始) なら遅刻
+          if (
+            date !== currentJapanDate ||
+            (nowTime && nowTime > shiftStartDate)
+          ) {
+            isTardy = true;
+          }
+        }
+
+        if (!isTardy) continue;
+
+        // 2-2) usersテーブル
+        const { data: userData, error: userError } = await supabase
+          .from("users")
+          .select("name, employee_number")
+          .eq("id", shift.user_id)
+          .single();
+        if (userError) {
+          console.error("ユーザー情報取得エラー:", userError);
+          continue;
+        }
+
+        // 2-3) user_hourly_rates → work_data
+        let locationName = "-";
+        if (shift.user_hourly_rate_id) {
+          const { data: rateData, error: rateError } = await supabase
+            .from("user_hourly_rates")
+            .select("id, work_location_id")
+            .eq("id", shift.user_hourly_rate_id)
+            .single();
+          if (!rateError && rateData) {
+            if (rateData.work_location_id) {
+              const { data: wdData, error: wdError } = await supabase
+                .from("work_data")
+                .select("location_name, is_deleted")
+                .eq("id", rateData.work_location_id)
+                .single();
+              if (!wdError && wdData) {
+                locationName = wdData.is_deleted
+                  ? `${wdData.location_name}（削除済み）`
+                  : wdData.location_name;
+              }
+            }
+          }
+        }
+
+        // 遅刻者データを作成
+        resultList.push({
+          userId: shift.user_id,
+          userName: userData?.name || "不明",
+          employeeNumber: userData?.employee_number || "不明",
+          shiftId: shift.id,
+          shiftStartTime: shift.start_time,
+          clockInTime: clockInStr,
+          status: recordStatus,
+          locationName,
+        });
+      }
+
+      setTardyList(resultList);
+
+      // 当日だけ未対応件数を更新
+      if (date === currentJapanDate) {
+        setLateCount(resultList.filter((t) => t.status === "遅刻").length);
+      } else {
+        // 過去日は反映しない
+        setLateCount(0);
+      }
+    } catch (err: any) {
+      console.error("遅刻取得エラー:", err);
+      setError("遅刻取得中にエラーが発生しました。");
     }
-  };
+  }
 
-  // 遅刻者を「対応済み」に変更する関数
-  const handleResolve = async (id: number) => {
+  /** 遅刻 → 対応済み */
+  async function handleResolve(shiftId: number) {
     try {
+      // shiftId と attendance_records.id は別物の場合が多い
+      // 例としてここでは eq("id", shiftId) としているが、実際は "attendance_records" のIDが必要
       const { error } = await supabase
         .from("attendance_records")
-        .update({ status: "対応済み" }) // 対応済みに更新
-        .eq("id", id);
+        .update({ status: "対応済み" })
+        .eq("id", shiftId);
+      if (error) throw error;
 
-      if (error) {
-        console.error("対応済みへの変更に失敗しました:", error);
-        setError("対応済みへの変更に失敗しました。");
-        return;
-      }
-
-      const updatedLateComers = lateComers.map((record) =>
-        record.id === id ? { ...record, status: "対応済み" } : record
+      setTardyList((prev) =>
+        prev.map((record) =>
+          record.shiftId === shiftId
+            ? { ...record, status: "対応済み" }
+            : record
+        )
       );
-      setLateComers(updatedLateComers);
-
-      // 未対応件数を更新
-      const unresolvedCount = updatedLateComers.filter(
-        (record) => record.status === "未対応"
-      ).length;
-      setLateCount(unresolvedCount);
+      // 当日なら未対応件数を再計算、過去日なら更新しない
+      if (selectedDate === getJapanDate()) {
+        setLateCount((prev) => Math.max(prev - 1, 0));
+      }
     } catch (err) {
       console.error("対応済みへの変更エラー:", err);
       setError("対応済みへの変更中にエラーが発生しました。");
     }
-  };
+  }
 
-  // 遅刻者を「未対応」に戻す関数
-  const handleUnresolve = async (id: number) => {
+  /** 対応済み → 遅刻 */
+  async function handleUnresolve(shiftId: number) {
     try {
       const { error } = await supabase
         .from("attendance_records")
-        .update({ status: "未対応" }) // 未対応に戻す
-        .eq("id", id);
+        .update({ status: "遅刻" })
+        .eq("id", shiftId);
+      if (error) throw error;
 
-      if (error) {
-        console.error("未対応への変更に失敗しました:", error);
-        setError("未対応への変更に失敗しました。");
-        return;
-      }
-
-      const updatedLateComers = lateComers.map((record) =>
-        record.id === id ? { ...record, status: "未対応" } : record
+      setTardyList((prev) =>
+        prev.map((record) =>
+          record.shiftId === shiftId ? { ...record, status: "遅刻" } : record
+        )
       );
-      setLateComers(updatedLateComers);
-
-      // 未対応件数を更新
-      const unresolvedCount = updatedLateComers.filter(
-        (record) => record.status === "未対応"
-      ).length;
-      setLateCount(unresolvedCount);
+      // 当日だけ反映
+      if (selectedDate === getJapanDate()) {
+        setLateCount((prev) => prev + 1);
+      }
     } catch (err) {
       console.error("未対応への変更エラー:", err);
       setError("未対応への変更中にエラーが発生しました。");
     }
-  };
+  }
 
-  useEffect(() => {
-    const date = getJapanDate();
-    setTodayDate(date); // ✅ ステートに日付を設定
-  }, []);
-
-  useEffect(() => {
-    if (todayDate) {
-      fetchTodayLateComers(todayDate); // ✅ todayDateを引数として渡す
-    }
-  }, [todayDate]);
+  // 当日かどうか
+  const isToday = selectedDate === getJapanDate();
+  // 当日の場合だけ "(HH:MM時点)" を表示
+  const currentTimeText = isToday ? `（${getCurrentTime()}時点）` : "";
+  // 当日以外なら「※その日全体のデータを表示しています。」の注釈
+  const noteText = !isToday
+    ? "※選択日の遅刻者一覧はその日全体のデータを表示しています。"
+    : "";
 
   return (
     <AdminLayout adminName={admin.name}>
       <div className="container mx-auto py-6">
-        <h1 className="text-2xl font-bold mb-6">遅刻ステータス確認</h1>
-        {error && <p className="text-red-500">{error}</p>}
+        {error && <p className="text-red-500 mb-4">{error}</p>}
 
-        <div className="text-center mb-8">
-          <h2 className="text-4xl font-bold">
-            {todayDate || "日付を取得中..."} {/* ✅ ローディング対応 */}
-          </h2>
+        {/* 日付選択 */}
+        <div className="mb-4">
+          <label className="block font-bold text-lg mb-2">対象日</label>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="border px-3 py-1"
+          />
         </div>
 
-        <h2 className="text-xl font-bold mb-4">今日の遅刻者一覧</h2>
-        {lateComers.length > 0 ? (
+        {/* タイトル表示 */}
+        <div className="text-center mb-8">
+          <h2 className="text-3xl font-bold">
+            {selectedDate}
+            {isToday && (
+              <span className="ml-2 text-xl font-normal">
+                {currentTimeText}
+              </span>
+            )}
+          </h2>
+          {noteText && <p className="text-sm text-gray-500">{noteText}</p>}
+        </div>
+
+        <h1 className="text-2xl font-bold mb-4">遅刻ステータス確認</h1>
+        <h2 className="text-xl font-bold mb-4">選択日の遅刻者一覧</h2>
+
+        {tardyList.length > 0 ? (
           <table className="table-auto w-full bg-white border border-gray-300">
             <thead>
               <tr>
                 <th className="border px-4 py-2">社員番号</th>
                 <th className="border px-4 py-2">名前</th>
                 <th className="border px-4 py-2">シフト開始</th>
-                <th className="border px-4 py-2">勤務地</th>{" "}
-                {/* ✅ 追加：勤務地 */}
+                <th className="border px-4 py-2">勤務地</th>
                 <th className="border px-4 py-2">出勤打刻</th>
-                <th className="border px-4 py-2">遅刻時間</th>
                 <th className="border px-4 py-2">状態</th>
                 <th className="border px-4 py-2">操作</th>
               </tr>
             </thead>
             <tbody>
-              {lateComers.map((record) => {
-                const shiftStart = record.shifts.start_time
-                  ? new Date(`1970-01-01T${record.shifts.start_time}Z`)
-                  : null;
-                const clockIn = record.clock_in
-                  ? new Date(`1970-01-01T${record.clock_in}Z`)
-                  : null;
-                const lateMinutes =
-                  shiftStart && clockIn
-                    ? Math.floor(
-                        (clockIn.getTime() - shiftStart.getTime()) / (1000 * 60)
-                      )
-                    : 0;
-
-                const lateHours = Math.floor(lateMinutes / 60);
-                const lateTime = `${lateHours > 0 ? `${lateHours}時間` : ""}${
-                  lateMinutes % 60
-                }分`;
+              {tardyList.map((record) => {
+                // 打刻があれば打刻遅れ、なければ無打刻
+                const tardyType = record.clockInTime ? "打刻遅れ" : "無打刻";
 
                 return (
-                  <tr key={record.id}>
+                  <tr key={record.shiftId}>
                     <td className="border px-4 py-2">
-                      {record.users.employee_number || "-"}
+                      {record.employeeNumber}
+                    </td>
+                    <td className="border px-4 py-2">{record.userName}</td>
+                    <td className="border px-4 py-2">
+                      {record.shiftStartTime}
+                    </td>
+                    <td className="border px-4 py-2">{record.locationName}</td>
+                    <td className="border px-4 py-2">
+                      {record.clockInTime ?? "-"}
                     </td>
                     <td className="border px-4 py-2">
-                      {record.users.name || "-"}
+                      {record.status}
+                      <br />
+                      <span className="text-xs text-gray-500">
+                        ({tardyType})
+                      </span>
                     </td>
                     <td className="border px-4 py-2">
-                      {record.shifts.start_time || "-"}
-                    </td>
-                    <td className="border px-4 py-2">
-                      {record.shifts.user_hourly_rates?.work_data
-                        ?.location_name || "-"}
-                    </td>
-                    <td className="border px-4 py-2">
-                      {formatToJapanTime(record.clock_in) || "-"}
-                    </td>
-                    <td className="border px-4 py-2">{lateTime}</td>
-                    <td className="border px-4 py-2">{record.status}</td>
-                    <td className="border px-4 py-2">
-                      {record.status === "未対応" ? (
-                        <button
-                          onClick={() => handleResolve(record.id)}
-                          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-                        >
-                          対応済みにする
-                        </button>
+                      {/* 当日以外ならボタン非表示 */}
+                      {isToday ? (
+                        record.status === "遅刻" ? (
+                          <button
+                            onClick={() => handleResolve(record.shiftId)}
+                            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+                          >
+                            対応完了にする
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleUnresolve(record.shiftId)}
+                            className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+                          >
+                            未対応に戻す
+                          </button>
+                        )
                       ) : (
-                        <button
-                          onClick={() => handleUnresolve(record.id)}
-                          className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
-                        >
-                          未対応に戻す
-                        </button>
+                        <span className="text-gray-400">-</span>
                       )}
                     </td>
                   </tr>
