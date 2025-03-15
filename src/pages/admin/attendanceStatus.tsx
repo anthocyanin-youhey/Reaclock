@@ -300,70 +300,132 @@ export default function AttendanceStatus({
         <h2 className="text-xl font-bold mb-4">選択日の遅刻者一覧</h2>
 
         {tardyList.length > 0 ? (
-          <table className="table-auto w-full bg-white border border-gray-300">
-            <thead>
-              <tr>
-                <th className="border px-4 py-2">社員番号</th>
-                <th className="border px-4 py-2">名前</th>
-                <th className="border px-4 py-2">シフト開始</th>
-                <th className="border px-4 py-2">勤務地</th>
-                <th className="border px-4 py-2">出勤打刻</th>
-                <th className="border px-4 py-2">状態</th>
-                <th className="border px-4 py-2">操作</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* --- (A) スマホ表示: カードレイアウト (md未満) --- */}
+            <div className="block md:hidden space-y-4">
               {tardyList.map((record) => {
-                // 打刻があれば打刻遅れ、なければ無打刻
                 const tardyType = record.clockInTime ? "打刻遅れ" : "無打刻";
-
                 return (
-                  <tr key={record.shiftId}>
-                    <td className="border px-4 py-2">
-                      {record.employeeNumber}
-                    </td>
-                    <td className="border px-4 py-2">{record.userName}</td>
-                    <td className="border px-4 py-2">
+                  <div
+                    key={record.shiftId}
+                    className="border p-4 rounded shadow bg-white"
+                  >
+                    <div className="text-sm font-bold mb-2">
+                      {record.userName} ({record.employeeNumber})
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-bold">シフト開始: </span>
                       {record.shiftStartTime}
-                    </td>
-                    <td className="border px-4 py-2">{record.locationName}</td>
-                    <td className="border px-4 py-2">
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-bold">勤務地: </span>
+                      {record.locationName}
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-bold">出勤打刻: </span>
                       {record.clockInTime ?? "-"}
-                    </td>
-                    <td className="border px-4 py-2">
-                      {record.status}
-                      <br />
-                      <span className="text-xs text-gray-500">
-                        ({tardyType})
-                      </span>
-                    </td>
-                    <td className="border px-4 py-2">
-                      {/* 当日以外ならボタン非表示 */}
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-bold">状態: </span>
+                      {record.status}（{tardyType}）
+                    </div>
+                    <div className="mt-2">
                       {isToday ? (
                         record.status === "遅刻" ? (
                           <button
                             onClick={() => handleResolve(record.shiftId)}
-                            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+                            className="bg-green-500 text-white px-2 py-1 rounded text-xs hover:bg-green-600"
                           >
-                            対応完了にする
+                            対応完了
                           </button>
                         ) : (
                           <button
                             onClick={() => handleUnresolve(record.shiftId)}
-                            className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+                            className="bg-yellow-500 text-white px-2 py-1 rounded text-xs hover:bg-yellow-600"
                           >
                             未対応に戻す
                           </button>
                         )
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-gray-400 text-xs">
+                          過去日のため操作不可
+                        </span>
                       )}
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+
+            {/* --- (B) PC表示: テーブル (md以上) --- */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="table-auto w-full bg-white border border-gray-300">
+                <thead>
+                  <tr>
+                    <th className="border px-4 py-2">社員番号</th>
+                    <th className="border px-4 py-2">名前</th>
+                    <th className="border px-4 py-2">シフト開始</th>
+                    <th className="border px-4 py-2">勤務地</th>
+                    <th className="border px-4 py-2">出勤打刻</th>
+                    <th className="border px-4 py-2">状態</th>
+                    <th className="border px-4 py-2">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tardyList.map((record) => {
+                    const tardyType = record.clockInTime
+                      ? "打刻遅れ"
+                      : "無打刻";
+                    return (
+                      <tr key={record.shiftId}>
+                        <td className="border px-4 py-2">
+                          {record.employeeNumber}
+                        </td>
+                        <td className="border px-4 py-2">{record.userName}</td>
+                        <td className="border px-4 py-2">
+                          {record.shiftStartTime}
+                        </td>
+                        <td className="border px-4 py-2">
+                          {record.locationName}
+                        </td>
+                        <td className="border px-4 py-2">
+                          {record.clockInTime ?? "-"}
+                        </td>
+                        <td className="border px-4 py-2">
+                          {record.status}
+                          <br />
+                          <span className="text-xs text-gray-500">
+                            ({tardyType})
+                          </span>
+                        </td>
+                        <td className="border px-4 py-2">
+                          {isToday ? (
+                            record.status === "遅刻" ? (
+                              <button
+                                onClick={() => handleResolve(record.shiftId)}
+                                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+                              >
+                                対応完了にする
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleUnresolve(record.shiftId)}
+                                className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+                              >
+                                未対応に戻す
+                              </button>
+                            )
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : (
           <p className="text-gray-600">遅刻者はいません。</p>
         )}
