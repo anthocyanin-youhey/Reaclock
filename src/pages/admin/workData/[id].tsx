@@ -137,27 +137,57 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
     alert("時給が更新されました！");
   };
 
-  // 時給データ削除
-  const handleDeleteRate = async (workLocationId: number) => {
-    if (!confirm("この勤務データを削除しますか？")) return;
-
-    const { error } = await supabase
-      .from("user_hourly_rates")
-      .delete()
-      .eq("user_id", id)
-      .eq("work_location_id", workLocationId);
-    if (error) {
-      console.error("時給データ削除エラー:", error);
-      alert("削除に失敗しました。");
+  // 時給リセット処理（デフォルトに戻す）
+  const handleResetRate = async (workLocationId: number) => {
+    const location = workLocations.find((loc) => loc.id === workLocationId);
+    if (!location) {
+      alert("勤務地情報が見つかりません。");
       return;
     }
-    // state 更新：該当キーを削除
-    setHourlyRates((prev) => {
-      const updated = { ...prev };
-      delete updated[workLocationId];
-      return updated;
-    });
-    alert("勤務データが削除されました！");
+    const defaultRate = location.hourly_rate;
+    // 既にレコードがあるかチェック
+    const { data, error } = await supabase
+      .from("user_hourly_rates")
+      .select("id")
+      .eq("user_id", id)
+      .eq("work_location_id", workLocationId)
+      .single();
+    if (error && error.code !== "PGRST116") {
+      console.error("レコード確認エラー:", error);
+      alert("エラーが発生しました。");
+      return;
+    }
+    if (data) {
+      // 更新既存レコード
+      const { error: updateError } = await supabase
+        .from("user_hourly_rates")
+        .update({ hourly_rate: defaultRate })
+        .eq("id", data.id);
+      if (updateError) {
+        console.error("時給リセットエラー:", updateError);
+        alert("時給のリセットに失敗しました。");
+        return;
+      }
+    } else {
+      // レコードがなければ新規登録する（通常はレコードがあるはず）
+      const { error: insertError } = await supabase
+        .from("user_hourly_rates")
+        .insert([
+          {
+            user_id: id,
+            work_location_id: workLocationId,
+            hourly_rate: defaultRate,
+          },
+        ]);
+      if (insertError) {
+        console.error("時給リセット登録エラー:", insertError);
+        alert("時給のリセットに失敗しました。");
+        return;
+      }
+    }
+    // state 更新
+    setHourlyRates((prev) => ({ ...prev, [workLocationId]: defaultRate }));
+    alert("デフォルトの時給にリセットしました！");
   };
 
   return (
@@ -218,12 +248,15 @@ export default function WorkData({ admin }: { admin: { name: string } }) {
                     >
                       保存
                     </button>
-                    <button
-                      onClick={() => handleDeleteRate(loc.id)}
-                      className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-                    >
-                      削除
-                    </button>
+                    {/* 削除ボタンは削除せず、「デフォルトに戻す」ボタンを表示 */}
+                    {staffRate !== undefined && staffRate !== defaultRate && (
+                      <button
+                        onClick={() => handleResetRate(loc.id)}
+                        className="bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600"
+                      >
+                        デフォルトに戻す
+                      </button>
+                    )}
                   </div>
                 </li>
               );
