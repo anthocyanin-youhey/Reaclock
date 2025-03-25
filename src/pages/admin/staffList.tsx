@@ -224,7 +224,7 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
                           router.push(`/admin/workData/${staff.id}`)
                         }
                       >
-                        勤務地データ登録
+                        勤務地ごとの時給編集
                       </button>
                       <button
                         className="bg-orange-500 text-white px-2 py-1 rounded text-xs font-medium hover:bg-orange-600 transition-colors duration-200 whitespace-nowrap w-full"
@@ -321,7 +321,7 @@ export default function StaffList({ admin }: { admin: { name: string } }) {
                     router.push(`/admin/workData/${selectedStaffForAction.id}`)
                   }
                 >
-                  <span>勤務地データ登録</span>
+                  <span>勤務地ごとの時給編集</span>
                 </button>
                 <button
                   className="bg-orange-500 text-white px-4 py-2.5 rounded text-sm font-medium hover:bg-orange-600 transition-colors duration-200 w-full flex items-center justify-center space-x-2"

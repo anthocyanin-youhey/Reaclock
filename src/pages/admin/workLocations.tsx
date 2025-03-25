@@ -1,4 +1,4 @@
-// reaclock\src\pages\admin\workLocations.tsx
+// reaclock/src/pages/admin/workLocations.tsx
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabaseCliants";
@@ -11,6 +11,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
   const [locationName, setLocationName] = useState("");
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("18:00");
+  const [hourlyRate, setHourlyRate] = useState(""); // 追加：デフォルト時給
   const [locations, setLocations] = useState<any[]>([]);
   const [statusMessage, setStatusMessage] = useState(""); // ステータスメッセージ
 
@@ -21,8 +22,9 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
   const [editingLocationName, setEditingLocationName] = useState<string>("");
   const [editingStartTime, setEditingStartTime] = useState<string>("");
   const [editingEndTime, setEditingEndTime] = useState<string>("");
+  const [editingHourlyRate, setEditingHourlyRate] = useState<string>(""); // 編集用時給
 
-  // 1) 既存の勤務地を取得
+  // 既存の勤務地を取得
   useEffect(() => {
     const fetchLocations = async () => {
       const { data, error } = await supabase.from("work_data").select("*");
@@ -36,7 +38,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
     fetchLocations();
   }, []);
 
-  // 2) 新規勤務地を登録
+  // 新規勤務地を登録
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -53,6 +55,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
             location_name: locationName,
             start_time: startTime,
             end_time: endTime,
+            hourly_rate: parseFloat(hourlyRate),
             is_deleted: false, // 論理削除用フラグの初期値
           },
         ])
@@ -67,6 +70,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
         setLocationName("");
         setStartTime("09:00");
         setEndTime("18:00");
+        setHourlyRate(""); // 入力欄リセット
       }
     } catch (err) {
       console.error("ネットワークエラー:", err);
@@ -75,13 +79,13 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
   };
 
   /**
-   * 3) 勤務地データの削除処理（論理削除 or 物理削除）
+   * 勤務地データの削除処理（論理削除 or 物理削除）
    */
   const handleDelete = async (workDataId: number) => {
     if (!confirm("この勤務地を削除しますか？")) return;
 
     try {
-      // ----- (A) user_hourly_rates テーブルで参照されているかチェック -----
+      // (A) user_hourly_rates テーブルで参照されているかチェック
       const { data: userHrRates, error: userHrErr } = await supabase
         .from("user_hourly_rates")
         .select("id")
@@ -96,7 +100,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
       }
       const userHrIds = (userHrRates || []).map((uhr: any) => uhr.id);
 
-      // ----- (B) shifts テーブルで user_hourly_rate_id in userHrIds があるかチェック -----
+      // (B) shifts テーブルで user_hourly_rate_id が存在するかチェック
       let usedByShifts = false;
       if (userHrIds.length > 0) {
         const { data: shiftsData, error: shiftsErr } = await supabase
@@ -114,10 +118,8 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
         }
       }
 
-      // user_hourly_rates 自体があれば => それを参照する時給データがある
+      // user_hourly_rates が存在すればその時給データがあるとみなす
       const usedByRates = userHrIds.length > 0;
-
-      // いずれかで使用中
       const isReferenced = usedByRates || usedByShifts;
 
       if (isReferenced) {
@@ -131,9 +133,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
           alert("論理削除に失敗しました。");
           console.error("論理削除エラー:", error.message);
         } else {
-          // "○○で使用されているため～" の文言
           alert("他の画面で使用されているため、完全削除せずグレーアウトします");
-          // state 更新：対象レコードに is_deleted を反映
           setLocations((prev) =>
             prev.map((loc) =>
               loc.id === workDataId ? { ...loc, is_deleted: true } : loc
@@ -162,7 +162,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
   };
 
   /**
-   * 4) 論理削除されたレコードを復元する処理
+   * 論理削除されたレコードを復元する処理
    */
   const handleRestore = async (workDataId: number) => {
     if (!confirm("この勤務地を復元しますか？")) return;
@@ -178,7 +178,6 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
         console.error("復元エラー:", error.message);
       } else {
         alert("この勤務地を復元しました。");
-        // state 更新
         setLocations((prev) =>
           prev.map((loc) =>
             loc.id === workDataId ? { ...loc, is_deleted: false } : loc
@@ -197,6 +196,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
     setEditingLocationName(loc.location_name);
     setEditingStartTime(loc.start_time);
     setEditingEndTime(loc.end_time);
+    setEditingHourlyRate(loc.hourly_rate ? String(loc.hourly_rate) : "");
   };
 
   // 編集キャンセル
@@ -205,9 +205,10 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
     setEditingLocationName("");
     setEditingStartTime("");
     setEditingEndTime("");
+    setEditingHourlyRate("");
   };
 
-  // 保存（編集）処理：勤務地名、出勤時間、退勤時間を更新
+  // 保存（編集）処理：勤務地名、出勤時間、退勤時間、時給を更新
   const handleSaveLocation = async (locId: number) => {
     if (!editingLocationName) {
       setStatusMessage("勤務地名を入力してください。");
@@ -220,6 +221,7 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
           location_name: editingLocationName,
           start_time: editingStartTime,
           end_time: editingEndTime,
+          hourly_rate: parseFloat(editingHourlyRate),
         })
         .eq("id", locId)
         .select();
@@ -230,17 +232,17 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
       } else {
         setStatusMessage("✅ 勤務地が更新されました！");
         setLocations((prev) =>
-          prev.map((loc) => {
-            if (loc.id === locId) {
-              return {
-                ...loc,
-                location_name: editingLocationName,
-                start_time: editingStartTime,
-                end_time: editingEndTime,
-              };
-            }
-            return loc;
-          })
+          prev.map((loc) =>
+            loc.id === locId
+              ? {
+                  ...loc,
+                  location_name: editingLocationName,
+                  start_time: editingStartTime,
+                  end_time: editingEndTime,
+                  hourly_rate: parseFloat(editingHourlyRate),
+                }
+              : loc
+          )
         );
         cancelEditing();
       }
@@ -288,6 +290,21 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
               className="w-full px-4 py-2 border rounded"
+              required
+            />
+          </div>
+
+          {/* 時給（デフォルト金額） */}
+          <div className="mb-4">
+            <label className="block font-bold mb-2">
+              時給（デフォルト金額）
+            </label>
+            <input
+              type="number"
+              value={hourlyRate}
+              onChange={(e) => setHourlyRate(e.target.value)}
+              className="w-full px-4 py-2 border rounded"
+              placeholder="例: 1200"
               required
             />
           </div>
@@ -348,6 +365,15 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
                         className="border px-2 py-1 rounded"
                       />
                     </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="number"
+                        value={editingHourlyRate}
+                        onChange={(e) => setEditingHourlyRate(e.target.value)}
+                        className="border px-2 py-1 rounded"
+                        placeholder="時給"
+                      />
+                    </div>
                     <div className="flex space-x-2">
                       <button
                         onClick={() => handleSaveLocation(loc.id)}
@@ -366,21 +392,14 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
                 ) : (
                   <div className="flex justify-between items-center w-full">
                     <span>
-                      {loc.location_name}
-                      {loc.is_deleted && "（削除済み）"} ({loc.start_time} -{" "}
-                      {loc.end_time})
+                      {loc.location_name} {loc.is_deleted && "（削除済み）"} (
+                      {loc.start_time} - {loc.end_time}) | 時給:{" "}
+                      {loc.hourly_rate !== null && loc.hourly_rate !== undefined
+                        ? `${loc.hourly_rate}円`
+                        : "未登録"}
                     </span>
                     <div className="flex space-x-2">
-                      {/* 論理削除済みなら「復元」ボタンを表示 */}
-                      {loc.is_deleted ? (
-                        <button
-                          onClick={() => handleRestore(loc.id)}
-                          className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
-                        >
-                          復元
-                        </button>
-                      ) : (
-                        // 未削除なら編集ボタンを表示
+                      {!loc.is_deleted && (
                         <button
                           onClick={() => startEditingLocation(loc)}
                           className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
@@ -388,13 +407,21 @@ export default function WorkLocations({ admin }: { admin: { name: string } }) {
                           編集
                         </button>
                       )}
-
-                      <button
-                        onClick={() => handleDelete(loc.id)}
-                        className="bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600"
-                      >
-                        削除
-                      </button>
+                      {loc.is_deleted ? (
+                        <button
+                          onClick={() => handleRestore(loc.id)}
+                          className="bg-yellow-500 text-white px-4 py-1 rounded hover:bg-yellow-600"
+                        >
+                          復元
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleDelete(loc.id)}
+                          className="bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600"
+                        >
+                          削除
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
