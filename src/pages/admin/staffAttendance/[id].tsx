@@ -1,3 +1,4 @@
+// pages/admin/staff/[id].tsx
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import { supabase } from "../../../utils/supabaseCliants";
@@ -6,15 +7,40 @@ import { requireAdminAuth } from "../../../utils/authHelpers";
 
 export const getServerSideProps = requireAdminAuth;
 
+interface AttendanceRecord {
+  id: number | null;
+  work_date: string;
+  location_id: number | "";
+  shift_start_time: string;
+  shift_end_time: string;
+  clock_in: string;
+  clock_out: string;
+  hasChanges: boolean;
+}
+
+interface WorkLocation {
+  id: number;
+  location_name: string;
+  start_time: string;
+  end_time: string;
+}
+
+interface StaffInfo {
+  name: string;
+  employee_number: string;
+}
+
 export default function StaffAttendance({
   admin,
 }: {
   admin: { name: string; id: number };
 }) {
   const router = useRouter();
-  const { id } = router.query; // スタッフID
-  const [records, setRecords] = useState<any[]>([]);
-  const [error, setError] = useState<string>("");
+  const { id } = router.query;
+
+  const [staffInfo, setStaffInfo] = useState<StaffInfo | null>(null);
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [workLocations, setWorkLocations] = useState<WorkLocation[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
@@ -22,386 +48,402 @@ export default function StaffAttendance({
       "0"
     )}`;
   });
-  const [changeLogs, setChangeLogs] = useState<any[]>([]); // 変更ログ
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false); // モーダル状態
+  const [error, setError] = useState<string>("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [changeLogs, setChangeLogs] = useState<any[]>([]);
 
-  const hourOptions = Array.from({ length: 24 }, (_, i) =>
-    String(i).padStart(2, "0")
-  );
-  const minuteOptions = Array.from({ length: 60 }, (_, i) =>
-    String(i).padStart(2, "0")
-  );
+  useEffect(() => {
+    if (id) {
+      fetchStaffInfo();
+      fetchWorkLocations();
+    }
+  }, [id]);
 
-  // 打刻履歴を取得
-  const fetchRecords = async () => {
-    try {
-      const firstDay = `${selectedMonth}-01`;
-      const lastDay = `${selectedMonth}-${new Date(
-        parseInt(selectedMonth.split("-")[0]),
-        parseInt(selectedMonth.split("-")[1]),
-        0
-      ).getDate()}`;
-      const { data, error } = await supabase
-        .from("attendance_records")
-        .select("id, work_date, clock_in, clock_out, status")
-        .eq("user_id", id)
-        .gte("work_date", firstDay)
-        .lte("work_date", lastDay)
-        .order("work_date", { ascending: true });
-      if (error) {
-        setError("打刻履歴の取得に失敗しました。");
-        console.error(error);
-      } else {
-        setRecords(
-          data.map((record) => ({
-            ...record,
-            clock_in_hour: record.clock_in
-              ? record.clock_in.split(":")[0]
-              : "00",
-            clock_in_minute: record.clock_in
-              ? record.clock_in.split(":")[1]
-              : "00",
-            clock_out_hour: record.clock_out
-              ? record.clock_out.split(":")[0]
-              : "00",
-            clock_out_minute: record.clock_out
-              ? record.clock_out.split(":")[1]
-              : "00",
-            hasChanges: false, // 初期状態では変更なし
-          }))
-        );
-      }
-    } catch (err) {
-      console.error("データ取得エラー:", err);
-      setError("データ取得中にエラーが発生しました。");
+  useEffect(() => {
+    if (id) {
+      fetchData();
+    }
+  }, [id, selectedMonth]);
+
+  const fetchStaffInfo = async () => {
+    const { data, error } = await supabase
+      .from("users")
+      .select("name, employee_number")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      console.error("スタッフ情報の取得エラー:", error);
+      setError("スタッフ情報の取得中にエラーが発生しました。");
+    } else {
+      setStaffInfo(data);
     }
   };
 
-  // 保存処理
-  const saveRecord = async (record: any) => {
-    const {
-      id: recordId,
-      clock_in_hour,
-      clock_in_minute,
-      clock_out_hour,
-      clock_out_minute,
-      work_date,
-    } = record;
-    const clock_in =
-      clock_in_hour === "00" && clock_in_minute === "00"
-        ? "00:00:00"
-        : `${clock_in_hour}:${clock_in_minute}:00`;
-    const clock_out =
-      clock_out_hour === "00" && clock_out_minute === "00"
-        ? "00:00:00"
-        : `${clock_out_hour}:${clock_out_minute}:00`;
-    let newStatus = null;
-    if (clock_in && clock_out) {
-      newStatus = "退勤済み";
-    } else if (clock_in && !clock_out) {
-      newStatus = "出勤中";
-    }
-    try {
-      const { data: existingRecord, error: fetchError } = await supabase
-        .from("attendance_records")
-        .select("*")
-        .eq("user_id", id)
-        .eq("work_date", work_date)
-        .single();
-      const isNewRecord = !existingRecord;
-      const { error: upsertError } = await supabase
-        .from("attendance_records")
-        .upsert(
-          {
-            id: isNewRecord ? undefined : existingRecord.id,
-            user_id: id,
-            work_date,
-            clock_in,
-            clock_out,
-            status: newStatus,
-          },
-          { onConflict: "user_id, work_date" }
-        );
-      if (upsertError) {
-        alert("レコード保存に失敗しました。");
-        console.error("アップサートエラー:", upsertError);
-        return;
+  const fetchWorkLocations = async () => {
+    const { data } = await supabase
+      .from("work_data")
+      .select("*")
+      .eq("is_deleted", false);
+    setWorkLocations(data || []);
+  };
+  const fetchData = async () => {
+    const daysInMonth = new Date(
+      Number(selectedMonth.split("-")[0]),
+      Number(selectedMonth.split("-")[1]),
+      0
+    ).getDate();
+    const firstDay = `${selectedMonth}-01`;
+    const lastDay = `${selectedMonth}-${String(daysInMonth).padStart(2, "0")}`;
+
+    const { data: attendanceData } = await supabase
+      .from("attendance_records")
+      .select("*")
+      .eq("user_id", id)
+      .gte("work_date", firstDay)
+      .lte("work_date", lastDay);
+
+    const { data: shiftsData } = await supabase
+      .from("shifts")
+      .select("*, work_data(*)")
+      .eq("user_id", id)
+      .gte("date", firstDay)
+      .lte("date", lastDay);
+
+    const recordsMerged: AttendanceRecord[] = Array.from(
+      { length: daysInMonth },
+      (_, i) => {
+        const dateStr = `${selectedMonth}-${String(i + 1).padStart(2, "0")}`;
+        const attendance =
+          attendanceData?.find((a) => a.work_date === dateStr) || {};
+        const shift = shiftsData?.find((s) => s.date === dateStr) || {};
+
+        return {
+          id: attendance.id || null,
+          work_date: dateStr,
+          location_id: shift.work_data_id || "",
+          shift_start_time: shift.start_time || "-",
+          shift_end_time: shift.end_time || "-",
+          clock_in: attendance.clock_in || "",
+          clock_out: attendance.clock_out || "",
+          hasChanges: false,
+        };
       }
-      // 保存した変更ログ（ここでは簡単な実装例）
-      const { data: logData, count } = await supabase
-        .from("attendance_change_logs")
-        .select("id", { count: "exact" })
-        .eq("attendance_id", isNewRecord ? undefined : existingRecord.id);
-      const changeNumber = (count || 0) + 1;
-      const changedAt = new Date().toLocaleString("ja-JP", {
-        timeZone: "Asia/Tokyo",
-      });
-      const { error: logError } = await supabase
-        .from("attendance_change_logs")
-        .insert({
-          attendance_id: isNewRecord ? undefined : existingRecord.id,
-          user_id: id,
-          old_clock_in: isNewRecord ? null : existingRecord?.clock_in,
-          new_clock_in: clock_in,
-          old_clock_out: isNewRecord ? null : existingRecord?.clock_out,
-          new_clock_out: clock_out,
-          changed_by: admin.id,
-          changed_at: changedAt,
-          change_number: changeNumber,
-          change_type: isNewRecord ? "新規登録" : "変更",
-        });
-      if (logError) {
-        console.error("変更ログ保存エラー:", logError);
-      }
-      alert("保存が完了しました！");
-      fetchRecords();
-    } catch (err) {
-      console.error("保存エラー:", err);
-      alert("保存中にエラーが発生しました。");
-    }
+    );
+
+    setRecords(recordsMerged);
   };
 
-  // 変更ログ取得
-  const fetchChangeLog = async (recordId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("attendance_change_logs")
-        .select("*")
-        .eq("attendance_id", recordId)
-        .order("change_number", { ascending: true });
-      if (error) {
-        alert("変更ログの取得に失敗しました。");
-        console.error(error);
-      } else {
-        setChangeLogs(
-          data.map((log) => ({
-            ...log,
-            changed_at: new Date(log.changed_at).toLocaleString("ja-JP", {
-              timeZone: "Asia/Tokyo",
-            }),
-          }))
-        );
-        setIsModalOpen(true);
-      }
-    } catch (err) {
-      console.error("変更ログ取得エラー:", err);
-      alert("変更ログ取得中にエラーが発生しました。");
-    }
-  };
-
-  // 変更ログの削除
-  const deleteChangeLog = async (logId: string) => {
-    try {
-      const { error } = await supabase
-        .from("attendance_change_logs")
-        .delete()
-        .eq("id", logId);
-      if (error) {
-        alert("変更ログの削除に失敗しました。");
-        console.error(error);
-      } else {
-        alert("変更ログを削除しました！");
-        setChangeLogs((prev) => prev.filter((log) => log.id !== logId));
-      }
-    } catch (err) {
-      console.error("削除エラー:", err);
-      alert("削除中にエラーが発生しました。");
-    }
-  };
-
-  // プルダウンでの時刻変更ハンドラー
-  const handleTimeChange = (recordId: string, field: string, value: string) => {
+  const handleLocationChange = (date: string, locId: number) => {
+    const loc = workLocations.find((w) => w.id === locId);
     setRecords((prev) =>
-      prev.map((record) =>
-        record.id === recordId
-          ? { ...record, [field]: value, hasChanges: true }
-          : record
+      prev.map((r) =>
+        r.work_date === date
+          ? {
+              ...r,
+              location_id: locId,
+              shift_start_time: loc?.start_time || "-",
+              shift_end_time: loc?.end_time || "-",
+              hasChanges: true,
+            }
+          : r
       )
     );
   };
 
-  useEffect(() => {
-    if (id) fetchRecords();
-  }, [id, selectedMonth]);
+  const handleInputChange = (
+    date: string,
+    field: "clock_in" | "clock_out",
+    value: string
+  ) => {
+    setRecords((prev) =>
+      prev.map((r) =>
+        r.work_date === date ? { ...r, [field]: value, hasChanges: true } : r
+      )
+    );
+  };
+
+  const handleReset = () => {
+    if (confirm("すべての変更を破棄して元に戻しますか？")) {
+      fetchData();
+    }
+  };
+
+  const saveRecord = async (rec: AttendanceRecord) => {
+    const status = rec.clock_out ? "退勤済み" : rec.clock_in ? "出勤中" : null;
+
+    const { data: prevRec } = await supabase
+      .from("attendance_records")
+      .select("clock_in, clock_out")
+      .eq("id", rec.id)
+      .maybeSingle();
+
+    try {
+      const { data } = await supabase
+        .from("attendance_records")
+        .upsert(
+          {
+            id: rec.id || undefined,
+            user_id: id,
+            work_date: rec.work_date,
+            shift_id: rec.location_id || null,
+            clock_in: rec.clock_in || null,
+            clock_out: rec.clock_out || null,
+            status,
+          },
+          { onConflict: "user_id,work_date" }
+        )
+        .select()
+        .single();
+
+      await supabase.from("shifts").upsert(
+        {
+          user_id: id,
+          date: rec.work_date,
+          work_data_id: rec.location_id,
+          start_time:
+            rec.shift_start_time !== "-" ? rec.shift_start_time : null,
+          end_time: rec.shift_end_time !== "-" ? rec.shift_end_time : null,
+        },
+        { onConflict: "user_id,date" }
+      );
+
+      if (
+        prevRec &&
+        (prevRec.clock_in !== rec.clock_in ||
+          prevRec.clock_out !== rec.clock_out)
+      ) {
+        await supabase.from("attendance_change_logs").insert({
+          attendance_id: data.id,
+          user_id: id,
+          changed_by: admin.id,
+          old_clock_in: prevRec.clock_in,
+          new_clock_in: rec.clock_in,
+          old_clock_out: prevRec.clock_out,
+          new_clock_out: rec.clock_out,
+          change_type: "打刻修正",
+          changed_at: new Date(),
+        });
+      }
+
+      alert(`${rec.work_date} を保存しました`);
+      fetchData();
+    } catch (err) {
+      console.error("保存エラー:", err);
+      alert("保存に失敗しました。");
+    }
+  };
+  const deleteRecord = async (rec: AttendanceRecord) => {
+    if (!confirm(`${rec.work_date} の打刻・シフトを削除しますか？`)) return;
+    try {
+      await Promise.all([
+        rec.id && supabase.from("attendance_records").delete().eq("id", rec.id),
+        supabase
+          .from("shifts")
+          .delete()
+          .eq("user_id", id)
+          .eq("date", rec.work_date),
+      ]);
+      alert(`${rec.work_date} を削除しました`);
+      fetchData();
+    } catch (err) {
+      console.error("削除エラー:", err);
+      alert("削除に失敗しました。");
+    }
+  };
+
+  const openLogs = async (attendanceId: number) => {
+    const { data } = await supabase
+      .from("attendance_change_logs")
+      .select("*")
+      .eq("attendance_id", attendanceId)
+      .order("changed_at", { ascending: false });
+    setChangeLogs(data || []);
+    setIsModalOpen(true);
+  };
+
+  const deleteChangeLog = async (logId: number) => {
+    if (!confirm("このログを削除しますか？")) return;
+    try {
+      await supabase.from("attendance_change_logs").delete().eq("id", logId);
+      setChangeLogs((prev) => prev.filter((log) => log.id !== logId));
+    } catch (err) {
+      console.error("ログ削除エラー:", err);
+      alert("ログの削除に失敗しました。");
+    }
+  };
 
   return (
     <AdminLayout adminName={admin.name}>
-      <div className="container mx-auto py-6">
-        <h1 className="text-2xl font-bold mb-4">打刻履歴編集</h1>
-        {error && <p className="text-red-500 mb-4">{error}</p>}
-        {/* 月選択 */}
-        <div className="mb-6">
-          <label className="block font-bold mb-2">月を選択</label>
+      <div className="container mx-auto p-4">
+        <h1 className="text-2xl font-bold text-center mb-2">
+          打刻履歴とシフト編集
+        </h1>
+        <p className="text-sm text-gray-600 text-center mb-4">
+          ※ シフトが登録されている日だけ打刻を編集できます
+        </p>
+
+        {staffInfo && (
+          <div className="mb-4 text-center text-lg font-semibold text-gray-700">
+            {staffInfo.employee_number} - {staffInfo.name}
+          </div>
+        )}
+
+        <div className="flex flex-col md:flex-row justify-between items-start mb-4 gap-4">
           <input
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="border px-4 py-2"
+            className="border rounded px-2 py-1"
           />
+          <button
+            onClick={handleReset}
+            className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+          >
+            リセット
+          </button>
         </div>
-        {/* 打刻履歴テーブル */}
-        <table className="w-full bg-white border-collapse border border-gray-300">
-          <thead>
-            <tr>
-              <th className="border border-gray-300 px-4 py-2">勤務日</th>
-              <th className="border border-gray-300 px-4 py-2">出勤時間</th>
-              <th className="border border-gray-300 px-4 py-2">退勤時間</th>
-              <th className="border border-gray-300 px-4 py-2">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {records.map((record) => (
-              <tr key={record.id}>
-                <td className="border border-gray-300 px-4 py-2 text-center">
-                  {record.work_date}
-                </td>
-                <td className="border border-gray-300 px-4 py-2 text-center">
-                  <div className="flex justify-center">
-                    <select
-                      value={record.clock_in_hour}
-                      onChange={(e) =>
-                        handleTimeChange(
-                          record.id,
-                          "clock_in_hour",
-                          e.target.value
-                        )
-                      }
-                      className="border rounded px-2 py-1 mr-2"
-                    >
-                      {hourOptions.map((hour) => (
-                        <option key={hour} value={hour}>
-                          {hour}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={record.clock_in_minute}
-                      onChange={(e) =>
-                        handleTimeChange(
-                          record.id,
-                          "clock_in_minute",
-                          e.target.value
-                        )
-                      }
-                      className="border rounded px-2 py-1"
-                    >
-                      {minuteOptions.map((minute) => (
-                        <option key={minute} value={minute}>
-                          {minute}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </td>
-                <td className="border border-gray-300 px-4 py-2 text-center">
-                  <div className="flex justify-center">
-                    <select
-                      value={record.clock_out_hour}
-                      onChange={(e) =>
-                        handleTimeChange(
-                          record.id,
-                          "clock_out_hour",
-                          e.target.value
-                        )
-                      }
-                      className="border rounded px-2 py-1 mr-2"
-                    >
-                      {hourOptions.map((hour) => (
-                        <option key={hour} value={hour}>
-                          {hour}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={record.clock_out_minute}
-                      onChange={(e) =>
-                        handleTimeChange(
-                          record.id,
-                          "clock_out_minute",
-                          e.target.value
-                        )
-                      }
-                      className="border rounded px-2 py-1"
-                    >
-                      {minuteOptions.map((minute) => (
-                        <option key={minute} value={minute}>
-                          {minute}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </td>
-                <td className="border border-gray-300 px-4 py-2 text-center">
-                  <button
-                    onClick={() => saveRecord(record)}
-                    disabled={!record.hasChanges}
-                    className={`px-4 py-2 rounded ${
-                      record.hasChanges
-                        ? "bg-blue-500 text-white hover:bg-blue-600"
-                        : "bg-gray-300 text-gray-700 cursor-not-allowed"
-                    }`}
-                  >
-                    保存
-                  </button>
-                  <button
-                    onClick={() => fetchChangeLog(record.id)}
-                    className="ml-2 bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
-                  >
-                    変更ログ
-                  </button>
-                </td>
+
+        {error && <p className="text-red-500 mb-4">{error}</p>}
+
+        <div className="overflow-x-auto">
+          <table className="table-auto w-full bg-white border border-gray-300 text-sm">
+            <thead>
+              <tr>
+                <th className="border px-2 py-1">日付</th>
+                <th className="border px-2 py-1">勤務地</th>
+                <th className="border px-2 py-1">シフト開始</th>
+                <th className="border px-2 py-1">シフト終了</th>
+                <th className="border px-2 py-1">出勤</th>
+                <th className="border px-2 py-1">退勤</th>
+                <th className="border px-2 py-1">操作</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {/* モーダルウィンドウ */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-          <div className="bg-white p-6 rounded shadow-md w-3/4 max-w-lg relative">
-            <h2 className="text-xl font-bold mb-4">変更ログ</h2>
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-4 right-4 bg-red-500 text-white rounded-full p-2 hover:bg-red-700"
-            >
-              ✕
-            </button>
-            {changeLogs.length > 0 ? (
-              <ul>
+            </thead>
+            <tbody>
+              {records.map((rec) => {
+                const editable =
+                  rec.shift_start_time !== "-" && rec.shift_end_time !== "-";
+                return (
+                  <tr key={rec.work_date}>
+                    <td className="border px-2 py-1">{rec.work_date}</td>
+                    <td className="border px-2 py-1">
+                      <select
+                        value={rec.location_id}
+                        onChange={(e) =>
+                          handleLocationChange(rec.work_date, +e.target.value)
+                        }
+                        className="w-full border rounded"
+                      >
+                        <option value="">選択</option>
+                        {workLocations.map((loc) => (
+                          <option key={loc.id} value={loc.id}>
+                            {loc.location_name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="border px-2 py-1">{rec.shift_start_time}</td>
+                    <td className="border px-2 py-1">{rec.shift_end_time}</td>
+                    <td className="border px-2 py-1">
+                      <input
+                        type="time"
+                        value={rec.clock_in}
+                        onChange={(e) =>
+                          handleInputChange(
+                            rec.work_date,
+                            "clock_in",
+                            e.target.value
+                          )
+                        }
+                        disabled={!editable}
+                        className="border rounded w-24 text-center"
+                      />
+                    </td>
+                    <td className="border px-2 py-1">
+                      <input
+                        type="time"
+                        value={rec.clock_out}
+                        onChange={(e) =>
+                          handleInputChange(
+                            rec.work_date,
+                            "clock_out",
+                            e.target.value
+                          )
+                        }
+                        disabled={!editable}
+                        className="border rounded w-24 text-center"
+                      />
+                    </td>
+                    <td className="border px-2 py-1 space-x-2 text-center">
+                      {editable && (
+                        <>
+                          <button
+                            onClick={() => saveRecord(rec)}
+                            className="bg-blue-500 text-white px-2 py-1 rounded"
+                          >
+                            保存
+                          </button>
+                          {rec.id && (
+                            <>
+                              <button
+                                onClick={() => openLogs(rec.id)}
+                                className="bg-gray-500 text-white px-2 py-1 rounded"
+                              >
+                                ログ
+                              </button>
+                              <button
+                                onClick={() => deleteRecord(rec)}
+                                className="bg-red-500 text-white px-2 py-1 rounded"
+                              >
+                                削除
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {isModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded shadow-md w-full max-w-md">
+              <h2 className="text-lg font-bold mb-4">変更ログ</h2>
+              <ul className="space-y-2 max-h-80 overflow-y-auto text-sm">
                 {changeLogs.map((log) => (
-                  <li key={log.id} className="mb-2 border-b pb-2">
-                    <p>
-                      <strong>変更番号:</strong> {log.change_number}
-                    </p>
-                    <p>
-                      <strong>変更種別:</strong> {log.change_type || "変更"}
-                    </p>
-                    <p>
-                      <strong>変更日時:</strong> {log.changed_at}
-                    </p>
-                    <p>
-                      <strong>出勤時刻:</strong> {log.old_clock_in || "--"} →{" "}
-                      {log.new_clock_in || "--"}
-                    </p>
-                    <p>
-                      <strong>退勤時刻:</strong> {log.old_clock_out || "--"} →{" "}
-                      {log.new_clock_out || "--"}
-                    </p>
+                  <li key={log.id} className="border-b pb-2">
+                    <div>{new Date(log.changed_at).toLocaleString()}</div>
+                    <div>
+                      出勤: {log.old_clock_in || "-"} →{" "}
+                      {log.new_clock_in || "-"}
+                    </div>
+                    <div>
+                      退勤: {log.old_clock_out || "-"} →{" "}
+                      {log.new_clock_out || "-"}
+                    </div>
                     <button
                       onClick={() => deleteChangeLog(log.id)}
-                      className="mt-2 bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600"
+                      className="text-red-500 text-xs mt-1"
                     >
-                      削除
+                      このログを削除
                     </button>
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p>変更ログが見つかりません。</p>
-            )}
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="mt-4 bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+              >
+                閉じる
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </AdminLayout>
   );
 }

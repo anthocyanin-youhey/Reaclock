@@ -1,4 +1,4 @@
-// reaclock/src/components/UserLayout.tsx
+//UserLayout.tsx
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useState } from "react";
@@ -15,134 +15,153 @@ export default function UserLayout({
 
   const handleLogout = async () => {
     try {
-      const response = await fetch("/api/user/logout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      if (response.ok) {
+      const res = await fetch("/api/user/logout", { method: "POST" });
+      if (res.ok) {
         router.push("/user/login");
       } else {
-        console.error("ログアウトに失敗しました");
+        console.error("ログアウト失敗");
       }
-    } catch (error) {
-      console.error("エラー:", error);
+    } catch (err) {
+      console.error("エラー:", err);
     }
   };
 
   return (
     <div className="flex flex-col min-h-screen">
-      <header className="bg-green-500 text-white relative">
-        <div className="container mx-auto flex justify-between items-center py-4 px-6">
-          <div className="flex items-center space-x-2">
-            {/* タイトルをクリックで /user/clock へ遷移 */}
-            <Link href="/user/clock" legacyBehavior>
-              <a className="text-xl font-bold hover:opacity-80">利用者画面</a>
-            </Link>
-            {/* スマホサイズでのユーザー名表示 */}
-            <span className="text-sm font-light ml-2 md:hidden">
-              {userName} さん
+      {/* Header */}
+      <header className="bg-white shadow fixed top-0 left-0 right-0 z-50 border-b border-gray-200">
+        <div className="max-w-screen-xl mx-auto px-6 py-3 flex justify-between items-center">
+          <Link href="/user/clock">
+            <span className="text-2xl font-semibold tracking-wide text-gray-800 cursor-pointer">
+              Lua<span className="text-green-600">9311</span>
             </span>
-          </div>
+          </Link>
 
-          {/* ナビゲーション（デスクトップ表示） */}
-          <div className="hidden md:flex items-center space-x-4">
-            <Link href="/user/clock">
-              <span className="py-2 px-4 rounded hover:bg-green-600 cursor-pointer">
-                打刻
-              </span>
-            </Link>
-            <Link href="/user/attendance">
-              <span className="py-2 px-4 rounded hover:bg-green-600 cursor-pointer">
-                履歴
-              </span>
-            </Link>
-            <div className="flex items-center space-x-4">
-              <p className="text-sm font-light">{userName} さんでログイン中</p>
+          {/* Desktop nav */}
+          <nav className="hidden xl:flex space-x-10 text-sm">
+            {navItems.map(({ href, title, subtitle }) => (
+              <Link
+                key={href}
+                href={href}
+                className="group flex flex-col items-center cursor-pointer"
+              >
+                <span className="text-gray-700 group-hover:text-green-600">
+                  {title}
+                </span>
+                <span className="text-xs text-gray-400 group-hover:text-green-600">
+                  {subtitle}
+                </span>
+                <span className="w-5 h-[2px] bg-green-600 mt-1 opacity-0 group-hover:opacity-100 transition-all" />
+              </Link>
+            ))}
+            <div className="flex items-center space-x-3 ml-6">
+              <span className="text-sm text-gray-500">{userName} さん</span>
               <button
                 onClick={handleLogout}
-                className="py-2 px-4 rounded border border-red-500 bg-red-500 text-white hover:bg-white hover:text-red-500 transition-all"
+                className="text-white bg-red-500 hover:bg-red-600 text-xs px-3 py-1 rounded"
               >
                 ログアウト
               </button>
             </div>
-          </div>
+          </nav>
 
-          {/* ハンバーガーメニューボタン（モバイル用） */}
+          {/* Hamburger menu */}
           <button
-            className="block md:hidden text-white focus:outline-none z-50"
-            onClick={() => setMenuOpen(!menuOpen)}
+            className="xl:hidden text-gray-700 focus:outline-none"
+            onClick={() => setMenuOpen(true)}
           >
             <svg
               className="w-6 h-6"
               fill="none"
               stroke="currentColor"
+              strokeWidth={2}
               viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
             >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={2}
-                d={
-                  menuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"
-                }
+                d="M4 6h16M4 12h16M4 18h16"
               />
             </svg>
           </button>
         </div>
-
-        {/* モバイル用サイドバー */}
-        <nav
-          className={`fixed top-0 right-0 h-full bg-green-600 text-white w-64 transform ${
-            menuOpen ? "translate-x-0" : "translate-x-full"
-          } transition-transform duration-300 ease-in-out z-40`}
-        >
-          <div className="p-6 border-b border-green-500">
-            <p className="text-sm font-light">{userName} さん</p>
-          </div>
-          <ul className="mt-4 space-y-4 px-6">
-            <li>
-              <Link
-                href="/user/clock"
-                className="block py-2 px-4 rounded hover:bg-green-700 cursor-pointer"
-                onClick={() => setMenuOpen(false)}
-              >
-                打刻
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/user/attendance"
-                className="block py-2 px-4 rounded hover:bg-green-700 cursor-pointer"
-                onClick={() => setMenuOpen(false)}
-              >
-                履歴
-              </Link>
-            </li>
-            <li className="mt-10">
-              <button
-                onClick={() => {
-                  setMenuOpen(false);
-                  handleLogout();
-                }}
-                className="block w-full py-2 px-4 rounded border border-red-500 bg-red-500 text-white hover:bg-white hover:text-red-500 transition-all"
-              >
-                ログアウト
-              </button>
-            </li>
-          </ul>
-        </nav>
       </header>
 
-      <main className="flex-grow container mx-auto px-6 py-4">{children}</main>
+      {/* Overlay */}
+      {menuOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-40 z-40 transition-opacity"
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
 
-      <footer className="bg-gray-800 text-white py-4">
-        <div className="container mx-auto text-center">
-          <p>&copy; 2024 利用者画面</p>
+      {/* Slide Menu */}
+      <aside
+        className={`fixed top-0 right-0 w-64 h-full bg-white z-50 transform transition-transform duration-300 ease-in-out shadow-lg ${
+          menuOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="p-6 space-y-6">
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-green-600 font-semibold text-sm">
+              {userName} さん
+            </p>
+            <button onClick={() => setMenuOpen(false)}>
+              <svg
+                className="w-6 h-6 text-gray-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+
+          {navItems.map(({ href, title, subtitle }) => (
+            <Link
+              key={href}
+              href={href}
+              onClick={() => setMenuOpen(false)}
+              className="block border-b pb-2"
+            >
+              <div className="font-semibold text-gray-700">{title}</div>
+              <div className="text-xs text-gray-500">{subtitle}</div>
+            </Link>
+          ))}
+
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              handleLogout();
+            }}
+            className="mt-6 bg-red-500 text-white py-2 w-full rounded hover:bg-red-600 transition"
+          >
+            ログアウト
+          </button>
         </div>
+      </aside>
+
+      {/* Content */}
+      <main className="flex-grow pt-20 px-6 max-w-screen-xl mx-auto w-full">
+        {children}
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-gray-800 text-white text-center py-4 text-sm mt-10">
+        &copy; 2024 利用者画面
       </footer>
     </div>
   );
 }
+
+// リンク定義（英語＋ルビ）
+const navItems = [
+  { href: "/user/clock", title: "Clock", subtitle: "打刻" },
+  { href: "/user/attendance", title: "History", subtitle: "履歴" },
+];
