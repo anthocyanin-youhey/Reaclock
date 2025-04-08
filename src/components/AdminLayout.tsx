@@ -1,4 +1,3 @@
-//C:\Users\seali\Desktop\react_and_next.js\Next.js-projects\reaclock\src\components\AdminLayout.tsx
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useState } from "react";
@@ -15,28 +14,45 @@ export default function AdminLayout({
   const { lateCount } = useLateCount();
   const [logoutMessage, setLogoutMessage] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false); // ローディング制御
 
   const handleLogout = async () => {
     try {
+      setIsLoggingOut(true); // ローディング開始
       const response = await fetch("/api/admin/logout", { method: "POST" });
       if (response.ok) {
         setLogoutMessage("ログアウトしました");
-        setTimeout(() => router.push("/admin/login"), 1500);
+        setTimeout(() => {
+          router.push("/admin/login");
+        }, 1500); // ローディングを表示したまま少し待つ
       } else {
         setLogoutMessage("ログアウトに失敗しました");
+        setIsLoggingOut(false);
       }
     } catch (e) {
       console.error("ログアウト失敗", e);
       setLogoutMessage("ログアウトに失敗しました");
+      setIsLoggingOut(false);
     }
   };
+
+  // ローディング表示中ならログイン時と同じスタイルで表示
+  if (isLoggingOut) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-white">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500 border-solid"></div>
+          <p className="text-gray-700 text-lg font-semibold">ログアウト中...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
       {/* === Header === */}
       <header className="bg-white shadow border-b border-gray-200 fixed w-full z-50">
         <div className="max-w-screen-xl mx-auto flex justify-between items-center py-4 px-6">
-          {/* ロゴ */}
           <Link
             href="/admin/dashboard"
             className="text-2xl font-light text-gray-800"
@@ -44,7 +60,6 @@ export default function AdminLayout({
             <span className="font-bold">Lua</span>9311
           </Link>
 
-          {/* PCナビゲーション */}
           <nav className="hidden md:flex space-x-8 text-sm text-gray-700">
             {navItems.map(({ href, title, subtitle }) => (
               <Link
@@ -59,7 +74,6 @@ export default function AdminLayout({
             ))}
           </nav>
 
-          {/* PCログアウト */}
           <div className="hidden md:flex items-center space-x-4 text-sm">
             <span className="text-gray-600">{adminName} さん</span>
             <button
@@ -70,7 +84,6 @@ export default function AdminLayout({
             </button>
           </div>
 
-          {/* ハンバーガーボタン */}
           <button
             onClick={() => setMenuOpen(true)}
             className="md:hidden text-gray-800 focus:outline-none"
@@ -92,7 +105,6 @@ export default function AdminLayout({
         </div>
       </header>
 
-      {/* モバイルメニュー背景 */}
       {menuOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-40 z-40 transition-opacity duration-300"
@@ -100,7 +112,6 @@ export default function AdminLayout({
         />
       )}
 
-      {/* モバイルメニュー本体 */}
       <aside
         className={`fixed top-0 right-0 w-64 h-full bg-white shadow-lg z-50 transform transition-transform duration-300 ease-in-out ${
           menuOpen ? "translate-x-0" : "translate-x-full"
@@ -148,17 +159,14 @@ export default function AdminLayout({
         </div>
       </aside>
 
-      {/* メインコンテンツ */}
       <main className="pt-24 px-6 flex-grow max-w-screen-xl mx-auto w-full">
         {children}
       </main>
 
-      {/* フッター */}
       <footer className="bg-gray-800 text-white text-sm text-center py-4">
         &copy; 2024 打刻アプリ - 管理者専用
       </footer>
 
-      {/* ログアウトメッセージ */}
       {logoutMessage && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded shadow z-50">
           {logoutMessage}
@@ -168,7 +176,6 @@ export default function AdminLayout({
   );
 }
 
-// ヘッダーのリンク定義（英語＋ルビ）
 const navItems = [
   { href: "/admin/dashboard", title: "Dashboard", subtitle: "ダッシュボード" },
   { href: "/admin/createStaff", title: "Register", subtitle: "スタッフ登録" },
