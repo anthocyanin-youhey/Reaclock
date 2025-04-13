@@ -69,7 +69,7 @@ export default async function handler(req, res) {
       );
 
       // 成功レスポンス
-      return res.status(200).json({ message: "ログイン成功！", token });
+      return res.status(200).json({ token });
     } catch (err) {
       console.error("ログインエラー:", err);
       return res.status(500).json({ error: "サーバーエラーが発生しました。" });

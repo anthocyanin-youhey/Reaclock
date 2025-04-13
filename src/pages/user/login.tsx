@@ -31,7 +31,6 @@ export default function UserLogin() {
 
       if (response.ok) {
         setErrorMessage(""); // エラーをリセット
-        alert("ログイン成功！");
         router.push("/user/clock"); // 打刻ページに遷移
       } else {
         // エラー内容に応じたメッセージを表示

@@ -1,4 +1,3 @@
-//UserLayout.tsx
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useState } from "react";
@@ -12,20 +11,36 @@ export default function UserLayout({
 }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false); // ✅ ローディング制御
 
   const handleLogout = async () => {
     try {
+      setIsLoggingOut(true);
       const res = await fetch("/api/user/logout", { method: "POST" });
       if (res.ok) {
-        router.push("/user/login");
+        setTimeout(() => {
+          router.push("/user/login");
+        }, 1200);
       } else {
         console.error("ログアウト失敗");
+        setIsLoggingOut(false);
       }
     } catch (err) {
       console.error("エラー:", err);
+      setIsLoggingOut(false);
     }
   };
 
+  if (isLoggingOut) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-white">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500 border-solid"></div>
+          <p className="text-gray-700 text-lg font-semibold">ログアウト中...</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col min-h-screen">
       {/* Header */}
@@ -33,7 +48,7 @@ export default function UserLayout({
         <div className="max-w-screen-xl mx-auto px-6 py-3 flex justify-between items-center">
           <Link href="/user/clock">
             <span className="text-2xl font-semibold tracking-wide text-gray-800 cursor-pointer">
-              Lua<span className="text-green-600">9311</span>
+              Mr.<span className="text-green-600">打刻</span>
             </span>
           </Link>
 
@@ -64,7 +79,6 @@ export default function UserLayout({
               </button>
             </div>
           </nav>
-
           {/* Hamburger menu */}
           <button
             className="xl:hidden text-gray-700 focus:outline-none"

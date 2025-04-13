@@ -57,7 +57,7 @@ export default function AdminLayout({
             href="/admin/dashboard"
             className="text-2xl font-light text-gray-800"
           >
-            <span className="font-bold">Lua</span>9311
+            <span className="font-bold">Mr.</span>打刻
           </Link>
 
           <nav className="hidden md:flex space-x-8 text-sm text-gray-700">

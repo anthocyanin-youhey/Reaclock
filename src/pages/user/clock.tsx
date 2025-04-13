@@ -1,4 +1,3 @@
-//reaclock/src/pages/user/clock.tsx
 import { useState, useEffect } from "react";
 import { requireUserAuth } from "../../utils/authHelpers";
 import UserLayout from "../../components/UserLayout";
@@ -6,18 +5,12 @@ import { supabase } from "../../utils/supabaseCliants";
 
 export const getServerSideProps = requireUserAuth;
 
-type ShiftData = {
-  id: number; // ✅ shift_idを追加
-  start_time: string | null;
-  end_time: string | null;
-  hourly_rate: number | null;
-};
-
 export default function ClockPage({
   user,
 }: {
   user: { name: string; id: number };
 }) {
+  const [isInitializing, setIsInitializing] = useState(true); // ログイン直後のローディング状態
   const [status, setStatus] = useState("");
   const [isClockInDisabled, setIsClockInDisabled] = useState(false);
   const [isClockOutDisabled, setIsClockOutDisabled] = useState(false);
@@ -49,7 +42,6 @@ export default function ClockPage({
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-
   useEffect(() => {
     const fetchAttendanceAndShift = async () => {
       try {
@@ -64,7 +56,6 @@ export default function ClockPage({
           .split("/")
           .join("-");
 
-        // ✅ 出退勤情報取得
         const { data: attendanceData } = await supabase
           .from("attendance_records")
           .select("*")
@@ -74,79 +65,47 @@ export default function ClockPage({
 
         if (attendanceData) {
           setClockInTime(
-            attendanceData?.clock_in
-              ? new Date(
-                  `2000-01-01T${attendanceData.clock_in}`
-                ).toLocaleTimeString("ja-JP", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
+            attendanceData.clock_in
+              ? attendanceData.clock_in.slice(0, 5)
               : "未記録"
           );
           setClockOutTime(
-            attendanceData?.clock_out
-              ? new Date(
-                  `2000-01-01T${attendanceData.clock_out}`
-                ).toLocaleTimeString("ja-JP", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
+            attendanceData.clock_out
+              ? attendanceData.clock_out.slice(0, 5)
               : "未記録"
           );
           setIsClockInDisabled(!!attendanceData?.clock_in);
           setIsClockOutDisabled(!!attendanceData?.clock_out);
         }
 
-        // ✅ シフト情報取得
         const { data: shiftData } = await supabase
           .from("shifts")
           .select(
             `
-    id,
-    date,
-    start_time,
-    end_time,
-    user_hourly_rates!fk_shifts_user_hourly_rate(
-      hourly_rate,
-      work_data!fk_user_hourly_rates_work_location(
-        location_name
-      )
-    )
-  `
+            id, date, start_time, end_time,
+            user_hourly_rates!fk_shifts_user_hourly_rate(
+              hourly_rate,
+              work_data!fk_user_hourly_rates_work_location(location_name)
+            )
+          `
           )
           .eq("user_id", user.id)
           .eq("date", jstDate)
           .maybeSingle();
 
         if (shiftData) {
-          setShiftId(shiftData.id); // ✅ shiftIdをステートに保持
+          setShiftId(shiftData.id);
 
           const userHourlyRate = Array.isArray(shiftData.user_hourly_rates)
             ? shiftData.user_hourly_rates[0]
             : shiftData.user_hourly_rates;
-
           const workData = Array.isArray(userHourlyRate?.work_data)
             ? userHourlyRate.work_data[0]
             : userHourlyRate?.work_data;
 
           setShiftInfo({
-            startTime: shiftData.start_time
-              ? new Date(
-                  `2000-01-01T${shiftData.start_time}`
-                ).toLocaleTimeString("ja-JP", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "未設定",
-            endTime: shiftData.end_time
-              ? new Date(`2000-01-01T${shiftData.end_time}`).toLocaleTimeString(
-                  "ja-JP",
-                  {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }
-                )
-              : "未設定",
+            startTime: shiftData.start_time?.slice(0, 5) || "未設定",
+            endTime: shiftData.end_time?.slice(0, 5) || "未設定",
             hourlyRate: userHourlyRate?.hourly_rate
               ? `${userHourlyRate.hourly_rate}円`
               : "未設定",
@@ -154,16 +113,18 @@ export default function ClockPage({
 
           setTodayWorkLocation(workData?.location_name || "未設定");
         }
+
+        setIsInitializing(false);
       } catch (err) {
         console.error("システムエラー:", err);
         setStatus("システムエラーが発生しました。");
+        setIsInitializing(false);
       }
     };
 
     fetchAttendanceAndShift();
   }, [user.id]);
 
-  // ✅ 出退勤時に shift_id を含めて登録
   const handleClock = async (type: "clock_in" | "clock_out") => {
     try {
       const now = new Date();
@@ -183,7 +144,7 @@ export default function ClockPage({
           type,
           time: jstTime,
           date: jstDate,
-          shiftId, // ✅ shift_idを追加
+          shiftId,
         }),
       });
 
@@ -207,6 +168,16 @@ export default function ClockPage({
     }
   };
 
+  if (isInitializing) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-white">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500 border-solid"></div>
+          <p className="text-gray-700 text-lg font-semibold">ログイン中...</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <UserLayout userName={user.name}>
       <div className="text-center">
@@ -216,50 +187,10 @@ export default function ClockPage({
         <div className="bg-white p-6 rounded-lg shadow-md max-w-md mx-auto mb-8">
           <h2 className="text-2xl font-bold mb-4">今日のシフト情報</h2>
           <div className="space-y-3">
-            <div className="flex justify-between items-center border-b border-gray-200 pb-2">
-              <span className="text-gray-600">勤務地</span>
-              <span
-                className={`font-medium ${
-                  todayWorkLocation === "未設定"
-                    ? "text-gray-400"
-                    : "text-blue-600"
-                }`}
-              >
-                {todayWorkLocation}
-              </span>
-            </div>
-            <div className="flex justify-between items-center border-b border-gray-200 pb-2">
-              <span className="text-gray-600">開始時間</span>
-              <span
-                className={`font-medium ${
-                  shiftInfo.startTime === "未設定" ? "text-gray-400" : ""
-                }`}
-              >
-                {shiftInfo.startTime}
-              </span>
-            </div>
-            <div className="flex justify-between items-center border-b border-gray-200 pb-2">
-              <span className="text-gray-600">終了時間</span>
-              <span
-                className={`font-medium ${
-                  shiftInfo.endTime === "未設定" ? "text-gray-400" : ""
-                }`}
-              >
-                {shiftInfo.endTime}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">時給</span>
-              <span
-                className={`font-medium ${
-                  shiftInfo.hourlyRate === "未設定"
-                    ? "text-gray-400"
-                    : "text-green-600"
-                }`}
-              >
-                {shiftInfo.hourlyRate}
-              </span>
-            </div>
+            <InfoRow label="勤務地" value={todayWorkLocation} />
+            <InfoRow label="開始時間" value={shiftInfo.startTime} />
+            <InfoRow label="終了時間" value={shiftInfo.endTime} />
+            <InfoRow label="時給" value={shiftInfo.hourlyRate} />
           </div>
         </div>
 
@@ -294,5 +225,25 @@ export default function ClockPage({
         </div>
       </div>
     </UserLayout>
+  );
+}
+
+// 補助コンポーネント
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+      <span className="text-gray-600">{label}</span>
+      <span
+        className={`font-medium ${
+          value === "未設定"
+            ? "text-gray-400"
+            : label === "時給"
+            ? "text-green-600"
+            : "text-blue-600"
+        }`}
+      >
+        {value}
+      </span>
+    </div>
   );
 }
